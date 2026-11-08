@@ -505,9 +505,9 @@ var NicoLiveHelper = {
             const repeatDelayValue = parseInt( Config['auto-enquete-repeat-delay'] );
             const repeatDelay = Number.isFinite( repeatDelayValue ) ? Math.max( 0, repeatDelayValue ) : 15;
 
-            // 「この動画を続ける」が優勢なら、投票比率に応じて現在の動画の再生終了予定を延長する。
-            // 「次の動画へ」が優勢になった場合のスキップ動作は従来どおり維持する。
-            if( keepWins && this.currentVideo && state.video_id === this.currentVideo.video_id ){
+            // 再投票する場合は、次の投票・結果表示まで動画が切れないよう再生終了予定を延長する。
+            // 「次の動画へ」が最多となり再投票しない場合は、従来どおりスキップ判定へ進む。
+            if( repeat && this.currentVideo && state.video_id === this.currentVideo.video_id ){
                 const totalVotes = keep + skip;
                 const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
                 const pollDurationValue = parseInt( Config['auto-enquete-duration'] );
@@ -535,7 +535,10 @@ var NicoLiveHelper = {
                     play_end: this.currentVideo.play_end,
                     auto_enquete_extension_total: this._auto_enquete_extension_total
                 });
-                console.log( `[AutoEnquete] 継続票比率 ${Math.round(keepRatio * 100)}% に応じて再生時間を${extension}秒延長します`, counts );
+                const extensionReason = keepWins
+                    ? `継続票比率 ${Math.round(keepRatio * 100)}%`
+                    : (noVotes ? '無投票' : '同票');
+                console.log( `[AutoEnquete] ${extensionReason}のため再投票時間を含めて再生時間を${extension}秒延長します`, counts );
             }
 
             console.log( keepWins ? '[AutoEnquete] 現在の動画を延長して再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
