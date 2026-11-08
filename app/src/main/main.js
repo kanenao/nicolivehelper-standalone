@@ -216,11 +216,21 @@ var NicoLiveHelper = {
                 method: 'POST',
                 headers: {'X-Public-Api-Token': this.liveProp.site.relive.csrfToken}
             } );
-            if( !res.ok ) console.error( '[AutoEnquete] show result failed:', res.status, await res.text() );
-            return res.ok;
+            if( !res.ok ){
+                console.error( '[AutoEnquete] fetch result failed:', res.status, await res.text() );
+                return null;
+            }
+            const payload = await res.json();
+            const items = payload && payload.data && payload.data.items;
+            if( !Array.isArray( items ) ){
+                console.error( '[AutoEnquete] unexpected result response:', payload );
+                return null;
+            }
+            console.log( '[AutoEnquete] APIから投票結果を取得しました', items );
+            return items;
         }catch( e ){
-            console.error( '[AutoEnquete] show result error:', e );
-            return false;
+            console.error( '[AutoEnquete] fetch result error:', e );
+            return null;
         }
     },
 
@@ -287,19 +297,28 @@ var NicoLiveHelper = {
         this._auto_enquete_timer = setTimeout( async () => {
             if( this._auto_enquete_state !== state ) return;
             state.awaitingResult = true;
-            const shown = await this.enqueteShowResult();
-            if( !shown ){
+            const items = await this.enqueteShowResult();
+            if( !items ){
                 await this.enqueteEnd();
                 this._auto_enquete_state = null;
-                this.showAlert( 'アンケート結果を表示できませんでした。自動スキップは行いません。' );
+                this.showAlert( 'アンケート結果をAPIから取得できませんでした。自動スキップは行いません。' );
                 return;
             }
-            this._auto_enquete_result_timer = setTimeout( async () => {
-                if( this._auto_enquete_state !== state || state.finalizing ) return;
+            const counts = {};
+            for( const item of items ){
+                if( item && typeof item.name === 'string' && Number.isFinite( Number(item.rate) ) ){
+                    counts[item.name] = Number(item.rate);
+                }
+            }
+            if( counts['この動画を続ける'] === undefined || counts['次の動画へ'] === undefined ){
+                console.error( '[AutoEnquete] 必要な選択肢が結果にありません:', items );
                 await this.enqueteEnd();
                 this._auto_enquete_state = null;
-                this.showAlert( 'アンケート結果を読み取れなかったため、自動スキップを中止しました。' );
-            }, 12000 );
+                this.showAlert( 'アンケート結果の選択肢を判定できませんでした。自動スキップは行いません。' );
+                return;
+            }
+            state.finalizing = true;
+            await this.finishAutoEnqueteRound( counts );
         }, duration * 1000 );
     },
 
