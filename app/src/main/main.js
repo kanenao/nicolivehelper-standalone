@@ -2851,16 +2851,26 @@ var NicoLiveHelper = {
                 : '番組終了時の次枠作成ページ自動表示をOFFにしました' );
         } );
 
-        $( '#btn-broadcast-create-next' ).on( 'click', () => {
+        $( '#btn-broadcast-create-next' ).on( 'click', async () => {
             const liveId = this.getLiveId();
             if( !liveId ){
-                this.showAlert( '番組に接続してから次枠作成を行ってください' );
+                this.showAlert( '次枠作成には現在の番組への接続が必要です' );
                 return;
             }
-            browser.tabs.create( {
-                'active': true,
-                'url': `https://live2.nicovideo.jp/create?reuse_id=${liveId}`
-            } );
+            try {
+                await stsen.openNicoLiveCreate( liveId );
+            } catch( e ) {
+                console.error( '[Broadcast] 次枠作成画面を開けませんでした:', e );
+                this.showAlert( 'ニコ生の番組作成画面を開けませんでした' );
+            }
+        } );
+        $( '#btn-broadcast-create-new' ).on( 'click', async () => {
+            try {
+                await stsen.openNicoLiveCreate( '' );
+            } catch( e ) {
+                console.error( '[Broadcast] 新規番組作成画面を開けませんでした:', e );
+                this.showAlert( 'ニコ生の番組作成画面を開けませんでした' );
+            }
         } );
         $( '#btn-broadcast-open-official' ).on( 'click', () => {
             const liveId = this.getLiveId();
