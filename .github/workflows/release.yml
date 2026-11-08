@@ -123,5 +123,7 @@ jobs:
           files: |
             app/dist/*.exe
             app/dist/*.zip
+            app/dist/*.blockmap
+            app/dist/*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
