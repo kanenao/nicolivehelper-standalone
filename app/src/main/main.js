@@ -448,9 +448,32 @@ var NicoLiveHelper = {
         const keepWins = keep > skip;
         const repeat = keepWins || (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
         if( repeat ){
-            console.log( keepWins ? '[AutoEnquete] 現在の動画を続ける票が多いため再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
             const repeatDelayValue = parseInt( Config['auto-enquete-repeat-delay'] );
             const repeatDelay = Number.isFinite( repeatDelayValue ) ? Math.max( 0, repeatDelayValue ) : 15;
+
+            // 「この動画を続ける」が優勢なら、投票比率に応じて現在の動画の再生終了予定を延長する。
+            // 「次の動画へ」が優勢になった場合のスキップ動作は従来どおり維持する。
+            if( keepWins && this.currentVideo && state.video_id === this.currentVideo.video_id ){
+                const totalVotes = keep + skip;
+                const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
+                const extension = repeatDelay + Math.max( 5, Math.round( repeatDelay * keepRatio ) );
+                const now = GetCurrentTime();
+                const currentEnd = Number(this.currentVideo.play_end) || now;
+                this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
+                const remaining = Math.max( 1, this.currentVideo.play_end - now );
+                this.setNextPlayTimer( remaining );
+                this.saveActivePlaySession({
+                    live_id: this.getLiveId(),
+                    video_id: this.currentVideo.video_id,
+                    title: this.currentVideo.title,
+                    length_ms: this.currentVideo.length_ms,
+                    play_begin: this.currentVideo.play_begin,
+                    play_end: this.currentVideo.play_end
+                });
+                console.log( `[AutoEnquete] 継続票比率 ${Math.round(keepRatio * 100)}% に応じて再生時間を${extension}秒延長します`, counts );
+            }
+
+            console.log( keepWins ? '[AutoEnquete] 現在の動画を延長して再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
             this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), repeatDelay * 1000 );
             return;
         }
