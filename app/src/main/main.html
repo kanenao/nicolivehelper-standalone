@@ -187,6 +187,13 @@
       <section id="broadcast-live-video">
         <div class="broadcast-live-pane-title">放送映像</div>
         <webview id="broadcast-live-webview" src="about:blank" allowpopups></webview>
+        <div id="broadcast-player-controls">
+          <div class="broadcast-player-timeline"><span id="broadcast-player-current">00:00</span><input id="broadcast-player-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="再生位置"><span id="broadcast-player-duration">--:--</span></div>
+          <div class="broadcast-player-buttons">
+            <button id="broadcast-player-back" type="button" title="10秒戻る">⏪ 10秒</button><button id="broadcast-player-toggle" type="button">▶ 再生</button><button id="broadcast-player-forward" type="button" title="10秒進む">10秒 ⏩</button>
+            <label for="broadcast-player-speed">再生速度</label><select id="broadcast-player-speed"><option value="1">1.0x</option><option value="1.25">1.25x</option><option value="1.5">1.5x</option><option value="1.75">1.75x</option><option value="2">2.0x</option></select><span id="broadcast-player-state">プレイヤー待機中</span>
+          </div>
+        </div>
       </section>
       <section id="broadcast-live-comments">
         <div class="broadcast-live-pane-title">コメント</div>
