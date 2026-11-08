@@ -4,6 +4,7 @@ const fs = require('fs');
 const url = require('url');
 const WebSocket = require('ws');
 const RemoteServer = require('./remoteServer');
+const { autoUpdater } = require('electron-updater');
 
 // コマンドライン引数 & 環境変数の解析
 const argv = process.argv.slice(2);
@@ -1201,6 +1202,101 @@ function startCdpMonitoring(wsUrl) {
   });
 }
 
+// -------------------------------------------------------------
+// アプリ内自動アップデート（Windows NSIS / GitHub Releases）
+// -------------------------------------------------------------
+let updateCheckTimer = null;
+let updateDownloadedVersion = null;
+let updateCheckInProgress = false;
+
+function emitAppUpdateStatus(status, extra = {}) {
+  const payload = Object.assign({ status, currentVersion: app.getVersion() }, extra);
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.send('app-update-status', payload);
+  }
+  console.log('[AutoUpdate]', payload);
+}
+
+async function checkForAppUpdates(manual = false) {
+  if (!app.isPackaged || isHeadlessArg || isHostArg) {
+    const result = { status: 'unsupported', message: '自動更新はインストーラー版のアプリ本体で利用できます。' };
+    if (manual) emitAppUpdateStatus(result.status, result);
+    return result;
+  }
+  if (updateCheckInProgress) return { status: 'checking' };
+  updateCheckInProgress = true;
+  try {
+    emitAppUpdateStatus('checking');
+    await autoUpdater.checkForUpdates();
+    return { status: 'checking' };
+  } catch (error) {
+    emitAppUpdateStatus('error', { message: error && error.message ? error.message : String(error) });
+    throw error;
+  } finally {
+    setTimeout(() => { updateCheckInProgress = false; }, 2000);
+  }
+}
+
+function setupAutoUpdater() {
+  if (!app.isPackaged || isHeadlessArg || isHostArg) {
+    console.log('[AutoUpdate] Skipped (development / headless / host mode).');
+    return;
+  }
+
+  try {
+    autoUpdater.logger = console;
+    autoUpdater.autoDownload = true;
+    autoUpdater.autoInstallOnAppQuit = true;
+    autoUpdater.allowPrerelease = true;
+
+    autoUpdater.on('checking-for-update', () => emitAppUpdateStatus('checking'));
+    autoUpdater.on('update-available', (info) => {
+      emitAppUpdateStatus('available', { version: info.version, releaseName: info.releaseName || '' });
+    });
+    autoUpdater.on('update-not-available', (info) => {
+      emitAppUpdateStatus('not-available', { version: info.version || app.getVersion() });
+    });
+    autoUpdater.on('download-progress', (progress) => {
+      emitAppUpdateStatus('downloading', {
+        percent: Math.max(0, Math.min(100, Math.round(progress.percent || 0))),
+        transferred: progress.transferred || 0,
+        total: progress.total || 0
+      });
+    });
+    autoUpdater.on('update-downloaded', async (info) => {
+      updateDownloadedVersion = info.version;
+      emitAppUpdateStatus('downloaded', { version: info.version });
+      try {
+        const result = await dialog.showMessageBox(
+          mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
+          {
+            type: 'info',
+            title: 'アップデートの準備ができました',
+            message: `NicoLive Helper v${info.version} のダウンロードが完了しました。`,
+            detail: '今すぐ再起動して更新するか、後でアプリを終了したときに適用できます。',
+            buttons: ['今すぐ再起動して更新', '後で'],
+            defaultId: 0,
+            cancelId: 1,
+            noLink: true
+          }
+        );
+        if (result.response === 0) autoUpdater.quitAndInstall(false, true);
+      } catch (error) {
+        console.error('[AutoUpdate] Update confirmation dialog failed:', error);
+      }
+    });
+    autoUpdater.on('error', (error) => {
+      emitAppUpdateStatus('error', { message: error && error.message ? error.message : String(error) });
+    });
+
+    setTimeout(() => checkForAppUpdates(false).catch(() => {}), 15000);
+    updateCheckTimer = setInterval(() => checkForAppUpdates(false).catch(() => {}), 6 * 60 * 60 * 1000);
+  } catch (error) {
+    console.error('[AutoUpdate] Failed to initialize:', error);
+    emitAppUpdateStatus('error', { message: error.message || String(error) });
+  }
+}
+
 // IPC ハンドラー群
 // -------------------------------------------------------------
 // storage.local (storage.json) ハンドラー
@@ -1464,6 +1560,20 @@ ipcMain.handle('detect-current-live', async () => {
   return await fetchMyCurrentLiveInfo();
 });
 
+ipcMain.handle('check-for-app-updates', async () => {
+  try {
+    return await checkForAppUpdates(true);
+  } catch (error) {
+    return { status: 'error', message: error.message || String(error) };
+  }
+});
+
+ipcMain.handle('install-app-update', () => {
+  if (!updateDownloadedVersion) return { success: false, message: '更新ファイルはまだ準備できていません。' };
+  autoUpdater.quitAndInstall(false, true);
+  return { success: true };
+});
+
 ipcMain.handle('get-app-version', () => {
   return app.getVersion();
 });
@@ -1637,6 +1747,7 @@ app.whenReady().then(async () => {
   }
 
   createOrFocusMainWindow(initialLvid);
+  setupAutoUpdater();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
