@@ -317,6 +317,10 @@ var NicoLiveHelper = {
                 this.showAlert( 'アンケート結果の選択肢を判定できませんでした。自動スキップは行いません。' );
                 return;
             }
+            const resultDisplayDuration = Math.max( 0, parseInt( Config['auto-enquete-result-display-duration'] ) || 15 );
+            console.log( `[AutoEnquete] 結果を${resultDisplayDuration}秒間表示します` );
+            await new Promise( resolve => setTimeout( resolve, resultDisplayDuration * 1000 ) );
+            if( this._auto_enquete_state !== state ) return;
             state.finalizing = true;
             await this.finishAutoEnqueteRound( counts );
         }, duration * 1000 );
@@ -351,7 +355,8 @@ var NicoLiveHelper = {
         const repeat = keepWins || (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
         if( repeat ){
             console.log( keepWins ? '[AutoEnquete] 現在の動画を続ける票が多いため再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
-            this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), 2000 );
+            const repeatDelay = Math.max( 0, parseInt( Config['auto-enquete-repeat-delay'] ) || 15 );
+            this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), repeatDelay * 1000 );
             return;
         }
         this._auto_enquete_state = null;
