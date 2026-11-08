@@ -108,6 +108,21 @@
     <div style="margin-top: 0.5em;">
       <label><input type="checkbox" id="play-in-time">枠内に収まるように再生する動画を選択する</label><br>
     </div>
+    <div style="margin-top: 10px; padding: 8px; border: 1px solid #bbb; border-radius: 4px;">
+      <div><label><input type="checkbox" id="auto-enquete-enabled">動画再生開始後に自動アンケートを実施する</label></div>
+      <div style="margin-top: 6px;">
+        <label for="auto-enquete-delay">アンケート開始まで:</label>
+        <input id="auto-enquete-delay" type="number" min="0" max="3600" value="60" style="width: 5em;"> 秒　
+        <label for="auto-enquete-duration">投票時間:</label>
+        <input id="auto-enquete-duration" type="number" min="5" max="300" value="30" style="width: 5em;"> 秒
+      </div>
+      <div style="margin-top: 6px;">
+        <label><input type="checkbox" id="auto-enquete-repeat-tie">同票なら再投票する</label>
+        <label style="margin-left: 12px;"><input type="checkbox" id="auto-enquete-repeat-empty">無投票なら再投票する</label>
+      </div>
+      <div><label><input type="checkbox" id="auto-enquete-auto-skip">「次の動画へ」が最多なら自動で次へ進む</label></div>
+      <small style="color: #666;">※結果コメントを認識できない場合は安全のためスキップしません。</small>
+    </div>
   </fieldset>
 
   <fieldset>
