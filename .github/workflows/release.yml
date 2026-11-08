@@ -2,6 +2,8 @@ name: Build & Release
 
 on:
   push:
+    branches:
+      - 'feature/auto-enquete-skip'
     tags:
       - 'v*'
   workflow_dispatch:
