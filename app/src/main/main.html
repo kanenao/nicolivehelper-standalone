@@ -152,6 +152,7 @@
   </fieldset>
 
   <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tab-live-screen" role="tab">放送画面</a></li>
     <li class="nav-item">
       <a class="nav-link" data-toggle="tab" href="#tab-broadcast" role="tab">放送管理</a>
     </li>
@@ -181,6 +182,18 @@
 </header>
 
 <div class="tab-content">
+  <div class="tab-pane active" id="tab-live-screen" role="tabpanel">
+    <div id="broadcast-live-layout">
+      <section id="broadcast-live-video">
+        <div class="broadcast-live-pane-title">放送映像</div>
+        <webview id="broadcast-live-webview" src="about:blank" allowpopups></webview>
+      </section>
+      <section id="broadcast-live-comments">
+        <div class="broadcast-live-pane-title">コメント</div>
+        <div id="broadcast-live-comments-content"></div>
+      </section>
+    </div>
+  </div>
   <!-- 放送管理 -->
   <div class="tab-pane" id="tab-broadcast" role="tabpanel">
     <div class="container-fluid p-3">
