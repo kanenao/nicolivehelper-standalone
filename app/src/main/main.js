@@ -3103,6 +3103,9 @@ var NicoLiveHelper = {
 
         this.initUI();
 
+        // 放送画面タブに既存のコメントUIを配置し、映像と左右分割で表示する。
+        $( '#broadcast-live-comments-content' ).append( $( '#tab-comment-body' ) );
+
         DB.initDB();
         Talker.init();
         if( typeof Discord !== 'undefined' ){
@@ -3136,6 +3139,12 @@ var NicoLiveHelper = {
                 $( '#live-caster' ).text( this.liveProp.program.supplier ? this.liveProp.program.supplier.name : '---' );
             }
             $( '#live-title' ).text( this.liveProp.program.title ).attr( 'title', this.liveProp.program.title );
+            // 視聴映像はログインCookieを共有するElectron webviewで表示する。
+            const liveWebview = document.getElementById( 'broadcast-live-webview' );
+            if( liveWebview ){
+                liveWebview.src = 'https://live.nicovideo.jp/watch/' + encodeURIComponent( this.getLiveId() );
+            }
+            $( 'a[href="#tab-live-screen"]' ).tab( 'show' );
             // 放送管理タブへ現在の番組情報を反映
             $( '#broadcast-title' ).text( this.liveProp.program.title || '---' );
             $( '#broadcast-id' ).text( this.getLiveId() || '---' );
