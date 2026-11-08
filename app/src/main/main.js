@@ -2995,7 +2995,13 @@ var NicoLiveHelper = {
             }
             browser.storage.local.set( {'playstyle': this.getPlayStyle()} );
         } );
-        let ps = (await browser.storage.local.get( 'playstyle' )).playstyle || 0;
+        let ps = 0;
+        try {
+            const playstyleData = await browser.storage.local.get( 'playstyle' );
+            ps = playstyleData && playstyleData.playstyle || 0;
+        } catch (e) {
+            console.error('[Init] Failed to load playstyle; using manual mode:', e);
+        }
         $( '#sel-playstyle' ).val( ps );
 
         // マイリストマネージャーを開く
@@ -3253,15 +3259,27 @@ var NicoLiveHelper = {
      * 初期化
      */
     init: async function(){
-        let extension_info = await browser.management.getSelf();
+        // UIを止めないため、環境情報・設定の取得失敗は個別に吸収する。
+        let extension_info = { version: (window.stsen && window.stsen.getVersion) ? window.stsen.getVersion() : '0.1.0' };
+        try {
+            extension_info = await browser.management.getSelf() || extension_info;
+        } catch (e) {
+            console.error('[Init] management.getSelf failed; using fallback version:', e);
+        }
         console.log( `New NicoLive Helper ${extension_info.version}` );
         this.version = extension_info.version;
         console.log( 'initialize nicolivehelper.' );
 
         /* 設定のロード */
-        let result = await browser.storage.local.get( 'config' );
+        let result = {};
+        try {
+            result = await browser.storage.local.get( 'config' ) || {};
+        } catch (e) {
+            console.error('[Init] Failed to load config; continuing with defaults:', e);
+        }
         console.log( 'Config loaded:' );
-        MergeSimpleObject( Config, result.config );
+        try { MergeSimpleObject( Config, result.config || {} ); }
+        catch (e) { console.error('[Init] Failed to merge config; continuing with defaults:', e); }
         $( '#broadcast-auto-create-next' ).prop( 'checked', !!Config['auto-create-next'] );
         console.log( Config );
         this.updatePNameWhitelist();
@@ -3279,23 +3297,34 @@ var NicoLiveHelper = {
             }
         } );
 
+        // 先に全UIの操作イベントを登録する。放送情報取得が失敗してもボタン操作は可能にする。
+        this.initUI().catch(e => console.error('[Init] UI initialization failed:', e));
+        this.initBroadcastPlayerControls();
+
         let lvid = GetParameterByName( 'lv' );
         console.log( 'lvid=' + lvid );
         if( lvid ){
             console.log( 'get liveinfo' );
-            this.liveProp = await browser.runtime.sendMessage( {
-                cmd: 'get-liveinfo',
-                request_id: lvid
-            } );
-            console.log( this.liveProp );
-            this.live_begintime = this.liveProp.program.beginTime;
-            this.live_endtime = this.liveProp.program.endTime;
-            this.nico_user_id = this.liveProp.user.id;
-            this.is_premium = this.liveProp.user.accountType == "premium" ? 1 : 0;
+            try {
+                this.liveProp = await browser.runtime.sendMessage( {
+                    cmd: 'get-liveinfo',
+                    request_id: lvid
+                } );
+                if (this.liveProp && this.liveProp.program && this.liveProp.user) {
+                    console.log( this.liveProp );
+                    this.live_begintime = this.liveProp.program.beginTime;
+                    this.live_endtime = this.liveProp.program.endTime;
+                    this.nico_user_id = this.liveProp.user.id;
+                    this.is_premium = this.liveProp.user.accountType == "premium" ? 1 : 0;
+                } else {
+                    console.warn('[Init] Live info was unavailable; starting offline UI.');
+                    this.liveProp = {};
+                }
+            } catch (e) {
+                console.error('[Init] Failed to load live info; starting offline UI:', e);
+                this.liveProp = {};
+            }
         }
-
-        this.initUI();
-        this.initBroadcastPlayerControls();
         if( lvid && this.liveProp ) this.refreshBroadcastLivePage();
         setInterval( () => this.updateBroadcastDashboard(), 1000 );
 
