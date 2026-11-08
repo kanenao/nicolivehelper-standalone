@@ -441,6 +441,7 @@ var NicoLiveHelper = {
             if( this._auto_enquete_state !== state ) return;
             state.awaitingResult = true;
             const items = await this.enqueteShowResult();
+            if( this._auto_enquete_state !== state || state.finalizing ) return;
             if( !items ){
                 await this.enqueteEnd();
                 this._auto_enquete_state = null;
@@ -466,7 +467,7 @@ var NicoLiveHelper = {
             const resultDisplayDuration = Number.isFinite( resultDisplayDurationValue ) ? Math.max( 0, resultDisplayDurationValue ) : 15;
             console.log( `[AutoEnquete] 結果を${resultDisplayDuration}秒間表示します` );
             await new Promise( resolve => setTimeout( resolve, resultDisplayDuration * 1000 ) );
-            if( this._auto_enquete_state !== state ) return;
+            if( this._auto_enquete_state !== state || state.finalizing ) return;
             state.finalizing = true;
             await this.finishAutoEnqueteRound( counts );
         }, duration * 1000 );
@@ -531,7 +532,8 @@ var NicoLiveHelper = {
                     title: this.currentVideo.title,
                     length_ms: this.currentVideo.length_ms,
                     play_begin: this.currentVideo.play_begin,
-                    play_end: this.currentVideo.play_end
+                    play_end: this.currentVideo.play_end,
+                    auto_enquete_extension_total: this._auto_enquete_extension_total
                 });
                 console.log( `[AutoEnquete] 継続票比率 ${Math.round(keepRatio * 100)}% に応じて再生時間を${extension}秒延長します`, counts );
             }
@@ -772,6 +774,9 @@ var NicoLiveHelper = {
                     let now = GetCurrentTime();
                     this.currentVideo.play_begin = now;
                     this.currentVideo.play_end = now + parseInt( this.currentVideo.length_ms / 1000 );
+                    this._auto_enquete_extension_video_id = vinfo.video_id;
+                    this._auto_enquete_extension_total = 0;
+                    this.setAutoEnqueteExtensionIndicator( 0, 0 );
 
                     this.saveActivePlaySession({
                         live_id: this.getLiveId(),
@@ -779,7 +784,8 @@ var NicoLiveHelper = {
                         title: vinfo.title,
                         length_ms: this.currentVideo.length_ms,
                         play_begin: this.currentVideo.play_begin,
-                        play_end: this.currentVideo.play_end
+                        play_end: this.currentVideo.play_end,
+                        auto_enquete_extension_total: 0
                     });
 
                     let next = parseInt( this.currentVideo.length_ms / 1000 + Config['autoplay-interval'] );
@@ -974,6 +980,9 @@ var NicoLiveHelper = {
             console.log( '[STSen] Restored active play session from storage:', session );
             this.currentVideo.play_begin = session.play_begin;
             this.currentVideo.play_end = session.play_end;
+            this._auto_enquete_extension_video_id = video_id;
+            this._auto_enquete_extension_total = Math.max( 0, Math.floor( Number(session.auto_enquete_extension_total) || 0 ) );
+            this.setAutoEnqueteExtensionIndicator( 0, this._auto_enquete_extension_total );
 
             // 残り時間に合わせて次の動画の自動再生タイマーを再スケジュール
             let remainingSec = session.play_end - now;
