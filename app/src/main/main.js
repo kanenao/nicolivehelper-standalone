@@ -41,6 +41,9 @@ var NicoLiveHelper = {
     is_premium: 0,
 
     _autoplay_timer: null,  ///< 自動再生用タイマー
+    _auto_enquete_timer: null,
+    _auto_enquete_result_timer: null,
+    _auto_enquete_state: null,
     _remain_timer_format_type: 0,   ///< 再生中動画の時間表示フォーマット種別(0:残り時間,1:経過時間,2:動作再生終了時の枠残り時間)
 
     _comm: null,                        ///< WebSocket通信インスタンス
@@ -181,18 +184,161 @@ var NicoLiveHelper = {
 
 
     /**
-     * アンケートする.
-     * @param q
-     * @param a1
-     * @param a2
-     * @param a3
-     * @param a4
-     * @param a5
-     * @param a6
-     * @param a7
-     * @param a8
-     * @param a9
+     * ニコ生アンケートを開始する.
      */
+    enquete: async function( question, ...items ){
+        if( !question || items.length < 2 || !this.isConnected() || !this.isCaster() ) return false;
+        const url = `https://live2.nicovideo.jp/unama/api/v3/programs/${this.getLiveId()}/enquete`;
+        try{
+            const res = await HttpFetch( 'POST', url, {
+                headers: {
+                    'Content-type': 'application/json;charset=utf-8',
+                    'X-Public-Api-Token': this.liveProp.site.relive.csrfToken
+                },
+                body: JSON.stringify({ question, items: items.filter( v => !!v ) })
+            } );
+            if( !res.ok ){
+                console.error( '[AutoEnquete] start failed:', res.status, await res.text() );
+                return false;
+            }
+            return true;
+        }catch( e ){
+            console.error( '[AutoEnquete] start error:', e );
+            return false;
+        }
+    },
+
+    enqueteShowResult: async function(){
+        const url = `https://live2.nicovideo.jp/unama/api/v3/programs/${this.getLiveId()}/enquete/show_result`;
+        try{
+            const res = await HttpFetch( 'POST', url, {
+                headers: {'X-Public-Api-Token': this.liveProp.site.relive.csrfToken}
+            } );
+            if( !res.ok ) console.error( '[AutoEnquete] show result failed:', res.status, await res.text() );
+            return res.ok;
+        }catch( e ){
+            console.error( '[AutoEnquete] show result error:', e );
+            return false;
+        }
+    },
+
+    enqueteEnd: async function(){
+        const url = `https://live2.nicovideo.jp/unama/api/v3/programs/${this.getLiveId()}/enquete/end`;
+        try{
+            const res = await HttpFetch( 'POST', url, {
+                headers: {'X-Public-Api-Token': this.liveProp.site.relive.csrfToken}
+            } );
+            if( !res.ok ) console.error( '[AutoEnquete] end failed:', res.status, await res.text() );
+            return res.ok;
+        }catch( e ){
+            console.error( '[AutoEnquete] end error:', e );
+            return false;
+        }
+    },
+
+    clearAutoEnqueteTimers: function(){
+        clearTimeout( this._auto_enquete_timer );
+        clearTimeout( this._auto_enquete_result_timer );
+        this._auto_enquete_timer = null;
+        this._auto_enquete_result_timer = null;
+        this._auto_enquete_state = null;
+    },
+
+    scheduleAutoEnquete: function(){
+        clearTimeout( this._auto_enquete_timer );
+        clearTimeout( this._auto_enquete_result_timer );
+        this._auto_enquete_timer = null;
+        this._auto_enquete_result_timer = null;
+        this._auto_enquete_state = null;
+        if( !Config['auto-enquete-enabled'] || !this.currentVideo || !this.isConnected() || !this.isCaster() ) return;
+        const delay = Math.max( 0, parseInt( Config['auto-enquete-delay'] ) || 0 );
+        const elapsed = Math.max( 0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()) );
+        const wait = Math.max( 0, delay - elapsed );
+        const videoId = this.currentVideo.video_id;
+        this._auto_enquete_timer = setTimeout( () => {
+            if( !this.currentVideo || this.currentVideo.video_id !== videoId ) return;
+            this.startAutoEnquete();
+        }, wait * 1000 );
+        console.log( `[AutoEnquete] ${wait}秒後にアンケートを開始します` );
+    },
+
+    startAutoEnquete: async function(){
+        if( this._auto_enquete_state || !Config['auto-enquete-enabled'] || !this.currentVideo ) return;
+        this._auto_enquete_state = { video_id: this.currentVideo.video_id, round: 0, awaitingResult: false, finalizing: false };
+        await this.runAutoEnqueteRound();
+    },
+
+    runAutoEnqueteRound: async function(){
+        const state = this._auto_enquete_state;
+        if( !state || !this.currentVideo || state.video_id !== this.currentVideo.video_id ) return;
+        state.round++;
+        state.awaitingResult = false;
+        state.finalizing = false;
+        const started = await this.enquete( 'この動画を続けるか、次の動画へ進むか投票してください', 'この動画を続ける', '次の動画へ' );
+        if( !started ){
+            this.showAlert( '自動アンケートを開始できませんでした。ログイン状態と配信主権限を確認してください。' );
+            this._auto_enquete_state = null;
+            return;
+        }
+        const duration = Math.max( 5, parseInt( Config['auto-enquete-duration'] ) || 30 );
+        this._auto_enquete_timer = setTimeout( async () => {
+            if( this._auto_enquete_state !== state ) return;
+            state.awaitingResult = true;
+            const shown = await this.enqueteShowResult();
+            if( !shown ){
+                await this.enqueteEnd();
+                this._auto_enquete_state = null;
+                this.showAlert( 'アンケート結果を表示できませんでした。自動スキップは行いません。' );
+                return;
+            }
+            this._auto_enquete_result_timer = setTimeout( async () => {
+                if( this._auto_enquete_state !== state || state.finalizing ) return;
+                await this.enqueteEnd();
+                this._auto_enquete_state = null;
+                this.showAlert( 'アンケート結果を読み取れなかったため、自動スキップを中止しました。' );
+            }, 12000 );
+        }, duration * 1000 );
+    },
+
+    handleAutoEnqueteResult: function( chat ){
+        const state = this._auto_enquete_state;
+        if( !state || !state.awaitingResult || state.finalizing || !chat ) return;
+        const text = chat.text_notag || chat.text || '';
+        const counts = {};
+        const re = /(この動画を続ける|次の動画へ)\\s*[（(：:]?\\s*(\\d+(?:\\.\\d+)?)\\s*%/g;
+        let match;
+        while( (match = re.exec( text )) !== null ){
+            counts[match[1]] = parseFloat( match[2] );
+        }
+        if( counts['この動画を続ける'] === undefined || counts['次の動画へ'] === undefined ) return;
+        state.finalizing = true;
+        clearTimeout( this._auto_enquete_result_timer );
+        this.finishAutoEnqueteRound( counts );
+    },
+
+    finishAutoEnqueteRound: async function( counts ){
+        const state = this._auto_enquete_state;
+        if( !state ) return;
+        await this.enqueteEnd();
+        const keep = counts['この動画を続ける'];
+        const skip = counts['次の動画へ'];
+        const noVotes = keep === 0 && skip === 0;
+        const tie = keep === skip;
+        const repeat = (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
+        if( repeat ){
+            console.log( '[AutoEnquete] 同票または無投票のため再投票します', counts );
+            this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), 2000 );
+            return;
+        }
+        this._auto_enquete_state = null;
+        if( Config['auto-enquete-auto-skip'] && skip > keep ){
+            console.log( '[AutoEnquete] 次の動画へ進みます', counts );
+            this.playNext();
+        }else{
+            console.log( '[AutoEnquete] 現在の動画を続けます', counts );
+        }
+    },
+
 
 
 
@@ -303,6 +449,7 @@ var NicoLiveHelper = {
                 this.setAutoplayIndicator( false );
                 clearTimeout( this._autoplay_timer );
                 this._autoplay_timer = null;
+                this.clearAutoEnqueteTimers();
                 resolve( true );
             };
             xhr.send( '{}' );
@@ -427,6 +574,7 @@ var NicoLiveHelper = {
 
                     let next = parseInt( this.currentVideo.length_ms / 1000 + Config['autoplay-interval'] );
                     this.setNextPlayTimer( next );
+                    this.scheduleAutoEnquete();
 
                     if( typeof Discord !== 'undefined' && Config['discord-on-play'] && Discord.webhookUrl ){
                         let str = this.replaceMacros( Config['discord-text'], this.currentVideo );
@@ -629,6 +777,7 @@ var NicoLiveHelper = {
             this.currentVideo.play_end = now + parseInt( (vinfo.length_ms || 0) / 1000 );
         }
 
+        this.scheduleAutoEnquete();
         $( '#remaining-time-main' ).text( vinfo.title );
         this.updateVideoProgress( now );
     },
@@ -1182,7 +1331,10 @@ var NicoLiveHelper = {
             }
             if( chat.date < this.connecttime ) return;
 
-            if( this.isCaster() ) return;
+            if( this.isCaster() ){
+                this.handleAutoEnqueteResult( chat );
+                return;
+            }
             this.processCasterComment( chat );
 
             // コメント読み上げ
