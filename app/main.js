@@ -561,7 +561,7 @@ function getMainWindowUrl(targetLvid) {
 // ニコ生の番組作成画面をアプリ内ウィンドウで開く（既定セッションのCookieを共有）
 function openNicoLiveCreateWindow(reuseId = '') {
   const createUrl = new URL('https://live2.nicovideo.jp/create');
-  if (reuseId && /^lv\\d+$/.test(String(reuseId))) {
+  if (reuseId && /^lv\d+$/.test(String(reuseId))) {
     createUrl.searchParams.set('reuse_id', String(reuseId));
   }
 
@@ -584,10 +584,11 @@ function openNicoLiveCreateWindow(reuseId = '') {
     autoHideMenuBar: true,
     webPreferences: getWebPreferences()
   });
-  inAppNicoContents.add(nicoCreateWindow.webContents.id);
+  const createContentsId = nicoCreateWindow.webContents.id;
+  inAppNicoContents.add(createContentsId);
   nicoCreateWindow.on('closed', () => { nicoCreateWindow = null; });
   nicoCreateWindow.webContents.on('destroyed', () => {
-    inAppNicoContents.delete(nicoCreateWindow ? nicoCreateWindow.webContents.id : -1);
+    inAppNicoContents.delete(createContentsId);
   });
   nicoCreateWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
