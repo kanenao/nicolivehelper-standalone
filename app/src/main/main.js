@@ -225,6 +225,10 @@ var NicoLiveHelper = {
         for(const button of [back,toggle,forward]) if(button){button.disabled=true;button.title='ニコ生の引用再生側に操作APIがないため未対応です';}
         if(speed){speed.disabled=true;speed.title='ニコ生の引用再生側に速度変更APIがないため未対応です';}
         if(state) state.textContent='ニコヘルの再生情報と同期します';
+        if(view){
+            view.addEventListener('did-fail-load',(event,code,description)=>{if(code!==-3 && state) state.textContent='放送画面の読み込みに失敗: '+description;});
+            view.addEventListener('did-finish-load',()=>{if(state) state.textContent='ニコ生の放送画面を表示中';});
+        }
         this.updateBroadcastDashboard();
     },
 
@@ -2932,10 +2936,18 @@ var NicoLiveHelper = {
         } );
         $( '#btn-broadcast-create-new' ).on( 'click', async () => {
             try {
-                await stsen.openNicoLiveCreate( '' );
+                if( !window.stsen || !window.stsen.openNicoLiveCreate ) throw new Error('アプリ内番組作成機能が利用できません');
+                const account = await window.stsen.getAccountStatus();
+                if( !account || !account.loggedIn ){
+                    this.showAlert( 'ニコニコにログインしてから新規枠を作成してください。ログイン画面を開きます。' );
+                    await window.stsen.openLoginWindow();
+                    return;
+                }
+                const result = await window.stsen.openNicoLiveCreate( '' );
+                if( result && result.success === false ) throw new Error('番組作成ウィンドウを開けませんでした');
             } catch( e ) {
                 console.error( '[Broadcast] 新規番組作成画面を開けませんでした:', e );
-                this.showAlert( 'ニコ生の番組作成画面を開けませんでした' );
+                this.showAlert( '新規枠を開けませんでした。ニコニコへのログイン状態を確認してください。' );
             }
         } );
         $( '#btn-broadcast-open-official' ).on( 'click', () => {
