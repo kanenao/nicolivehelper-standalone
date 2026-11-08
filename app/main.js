@@ -479,6 +479,7 @@ function getWebPreferences() {
     nodeIntegration: false,
     contextIsolation: true,
     webSecurity: true,
+    session: session.defaultSession,
     webviewTag: true,
     allowRunningInsecureContent: false
   };
@@ -560,49 +561,64 @@ function getMainWindowUrl(targetLvid) {
 }
 
 // ニコ生の番組作成画面をアプリ内ウィンドウで開く（既定セッションのCookieを共有）
-function openNicoLiveCreateWindow(reuseId = '') {
+async function openNicoLiveCreateWindow(reuseId = '') {
   const createUrl = new URL('https://live2.nicovideo.jp/create');
   if (reuseId && /^lv\d+$/.test(String(reuseId))) {
     createUrl.searchParams.set('reuse_id', String(reuseId));
+  } else if (reuseId) {
+    return { success: false, error: 'invalid_live_id' };
   }
 
-  if (nicoCreateWindow && !nicoCreateWindow.isDestroyed()) {
-    nicoCreateWindow.show();
-    nicoCreateWindow.focus();
-    if (nicoCreateWindow.webContents.getURL() !== createUrl.href) {
-      nicoCreateWindow.loadURL(createUrl.href);
-    }
-    return { success: true, reused: true };
-  }
-
-  nicoCreateWindow = new BrowserWindow({
-    width: 1040,
-    height: 820,
-    minWidth: 760,
-    minHeight: 600,
-    title: 'ニコ生 番組作成 - NicoLive Helper',
-    icon: path.join(__dirname, 'src', 'icons', 'icon-96.png'),
-    autoHideMenuBar: true,
-    webPreferences: getWebPreferences()
-  });
-  const createContentsId = nicoCreateWindow.webContents.id;
-  inAppNicoContents.add(createContentsId);
-  nicoCreateWindow.on('closed', () => { nicoCreateWindow = null; });
-  nicoCreateWindow.webContents.on('destroyed', () => {
-    inAppNicoContents.delete(createContentsId);
-  });
-  nicoCreateWindow.webContents.setWindowOpenHandler(({ url }) => {
-    try {
-      const target = new URL(url);
-      if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) {
-        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
+  try {
+    if (nicoCreateWindow && !nicoCreateWindow.isDestroyed()) {
+      nicoCreateWindow.show();
+      nicoCreateWindow.focus();
+      if (nicoCreateWindow.webContents.getURL() !== createUrl.href) {
+        await nicoCreateWindow.loadURL(createUrl.href);
       }
-    } catch (e) {}
-    shell.openExternal(url);
-    return { action: 'deny' };
-  });
-  nicoCreateWindow.loadURL(createUrl.href);
-  return { success: true, reused: false };
+      return { success: true, reused: true, url: createUrl.href };
+    }
+
+    nicoCreateWindow = new BrowserWindow({
+      width: 1040,
+      height: 820,
+      minWidth: 760,
+      minHeight: 600,
+      title: 'ニコ生 番組作成 - NicoLive Helper',
+      icon: path.join(__dirname, 'src', 'icons', 'icon-96.png'),
+      autoHideMenuBar: true,
+      webPreferences: getWebPreferences()
+    });
+    const createContentsId = nicoCreateWindow.webContents.id;
+    inAppNicoContents.add(createContentsId);
+    nicoCreateWindow.on('closed', () => { nicoCreateWindow = null; });
+    nicoCreateWindow.webContents.on('destroyed', () => {
+      inAppNicoContents.delete(createContentsId);
+    });
+    nicoCreateWindow.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+      if (isMainFrame && code !== -3) {
+        console.error('[BroadcastCreate] Page load failed:', code, description, url);
+      }
+    });
+    nicoCreateWindow.webContents.setWindowOpenHandler(({ url }) => {
+      try {
+        const target = new URL(url);
+        if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) {
+          return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
+        }
+      } catch (e) {}
+      shell.openExternal(url);
+      return { action: 'deny' };
+    });
+    await nicoCreateWindow.loadURL(createUrl.href);
+    nicoCreateWindow.show();
+    return { success: true, reused: false, url: createUrl.href };
+  } catch (error) {
+    console.error('[BroadcastCreate] Failed to open create page:', error);
+    if (nicoCreateWindow && !nicoCreateWindow.isDestroyed()) nicoCreateWindow.close();
+    nicoCreateWindow = null;
+    return { success: false, error: String(error && error.message || error) };
+  }
 }
 
 // メインウィンドウの作成・表示
