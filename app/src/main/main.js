@@ -2839,6 +2839,27 @@ var NicoLiveHelper = {
             } );
         } );
 
+        // 放送管理画面
+        $( '#btn-broadcast-create-next' ).on( 'click', () => {
+            const liveId = this.getLiveId();
+            if( !liveId ){
+                this.showAlert( '番組に接続してから次枠作成を行ってください' );
+                return;
+            }
+            browser.tabs.create( {
+                'active': true,
+                'url': `https://live2.nicovideo.jp/create?reuse_id=${liveId}`
+            } );
+        } );
+        $( '#btn-broadcast-open-official' ).on( 'click', () => {
+            const liveId = this.getLiveId();
+            if( !liveId ){
+                this.showAlert( '番組に接続してから公式放送画面を開いてください' );
+                return;
+            }
+            window.open( `https://live.nicovideo.jp/watch/${liveId}`, '_blank' );
+        } );
+
 
 
         // コメントを保存する
@@ -3090,6 +3111,17 @@ var NicoLiveHelper = {
                 $( '#live-caster' ).text( this.liveProp.program.supplier ? this.liveProp.program.supplier.name : '---' );
             }
             $( '#live-title' ).text( this.liveProp.program.title ).attr( 'title', this.liveProp.program.title );
+            // 放送管理タブへ現在の番組情報を反映
+            $( '#broadcast-title' ).text( this.liveProp.program.title || '---' );
+            $( '#broadcast-id' ).text( this.getLiveId() || '---' );
+            $( '#broadcast-caster' ).text(
+                this.liveProp.program.providerType === 'official' ? '公式' :
+                ( this.liveProp.program.supplier ? this.liveProp.program.supplier.name : '---' )
+            );
+            $( '#broadcast-status' )
+                .text( this.isCaster() ? '配信主として接続中' : '視聴中' )
+                .removeClass( 'badge-secondary badge-success badge-info' )
+                .addClass( this.isCaster() ? 'badge-success' : 'badge-info' );
 
             if( !this.isCaster() ){
                 // コメント送信タイプを視聴者に設定
