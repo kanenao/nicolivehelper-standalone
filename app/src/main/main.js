@@ -327,9 +327,11 @@ var NicoLiveHelper = {
         const skip = counts['次の動画へ'];
         const noVotes = keep === 0 && skip === 0;
         const tie = keep === skip;
-        const repeat = (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
+        // 「この動画を続ける」が多数の場合は、次動画への票が多数になるまで再投票を続ける。
+        const keepWins = keep > skip;
+        const repeat = keepWins || (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
         if( repeat ){
-            console.log( '[AutoEnquete] 同票または無投票のため再投票します', counts );
+            console.log( keepWins ? '[AutoEnquete] 現在の動画を続ける票が多いため再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
             this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), 2000 );
             return;
         }
