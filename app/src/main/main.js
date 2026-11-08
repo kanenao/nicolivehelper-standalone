@@ -3341,7 +3341,11 @@ var NicoLiveHelper = {
         } );
 
         // 先に全UIの操作イベントを登録する。放送情報取得が失敗してもボタン操作は可能にする。
-        this.initUI().catch(e => console.error('[Init] UI initialization failed:', e));
+        try {
+            await this.initUI();
+        } catch (e) {
+            console.error('[Init] UI initialization failed; continuing with remaining modules:', e);
+        }
         this.initBroadcastPlayerControls();
 
         let lvid = GetParameterByName( 'lv' );
@@ -3361,34 +3365,43 @@ var NicoLiveHelper = {
                     this.is_premium = this.liveProp.user.accountType == "premium" ? 1 : 0;
                 } else {
                     console.warn('[Init] Live info was unavailable; starting offline UI.');
-                    this.liveProp = {};
+                    this.liveProp = null;
                 }
             } catch (e) {
                 console.error('[Init] Failed to load live info; starting offline UI:', e);
-                this.liveProp = {};
+                this.liveProp = null;
             }
         }
-        if( lvid && this.liveProp ) this.refreshBroadcastLivePage();
+        const hasLiveInfo = !!(lvid && this.liveProp && this.liveProp.program && this.liveProp.user);
+        if( hasLiveInfo ) this.refreshBroadcastLivePage();
         setInterval( () => this.updateBroadcastDashboard(), 1000 );
 
         // 放送画面タブに既存のコメントUIを配置し、映像と左右分割で表示する。
         $( '#broadcast-live-comments-content' ).append( $( '#tab-comment-body' ) );
 
-        DB.initDB();
-        Talker.init();
+        // 各モジュールを独立して初期化し、一つの失敗で残りの機能を停止させない。
+        const initModule = async (name, initializer) => {
+            try {
+                await initializer();
+            } catch (e) {
+                console.error(`[Init] ${name} initialization failed; continuing:`, e);
+            }
+        };
+        await initModule('Database', () => DB.initDB());
+        await initModule('Talker', () => Talker.init());
         if( typeof Discord !== 'undefined' ){
-            Discord.init();
+            await initModule('Discord', () => Discord.init());
         }
-        NicoLiveMylist.init();
-        await NicoLiveRequest.init();
-        await NicoLiveStock.init();
-        NicoLiveComment.init();
-        NicoLiveHistory.init();
-        UserManage.init();
-        NicoLiveTagSearch.init();
-        this.initSTSenAccountUI();
+        await initModule('Mylist', () => NicoLiveMylist.init());
+        await initModule('Request', () => NicoLiveRequest.init());
+        await initModule('Stock', () => NicoLiveStock.init());
+        await initModule('Comment', () => NicoLiveComment.init());
+        await initModule('History', () => NicoLiveHistory.init());
+        await initModule('UserManage', () => UserManage.init());
+        await initModule('TagSearch', () => NicoLiveTagSearch.init());
+        await initModule('AccountUI', () => this.initSTSenAccountUI());
 
-        if( lvid ){
+        if( hasLiveInfo ){
             // 放送IDが渡されたら放送に接続する
             this._startup_comment_sent = false;
             if( this.liveProp ){
@@ -3477,5 +3490,15 @@ var NicoLiveHelper = {
 
 
 window.addEventListener( 'load', ( ev ) => {
-    NicoLiveHelper.init();
+    NicoLiveHelper.init().catch( ( error ) => {
+        console.error('[Init] Fatal startup error:', error);
+        let banner = document.getElementById('app-startup-error');
+        if (!banner) {
+            banner = document.createElement('div');
+            banner.id = 'app-startup-error';
+            banner.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;padding:10px 14px;background:#fff3cd;color:#664d03;border:1px solid #ffecb5;border-radius:4px;font-size:12px;';
+            document.body.appendChild(banner);
+        }
+        banner.textContent = '一部の初期化に失敗しました。詳細は開発ログを確認してください: ' + (error && error.message ? error.message : String(error));
+    } );
 } );
