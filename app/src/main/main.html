@@ -185,7 +185,7 @@
   <div class="tab-pane active" id="tab-live-screen" role="tabpanel">
     <div id="broadcast-live-layout">
       <section id="broadcast-live-video">
-        <div class="broadcast-live-pane-title">放送映像</div>
+        <div class="broadcast-live-pane-title">放送映像 <button id="broadcast-live-refresh" type="button" class="btn btn-sm btn-outline-light float-right">↻ 更新</button></div>
         <webview id="broadcast-live-webview" src="about:blank" allowpopups></webview>
         <div id="broadcast-player-controls">
           <div class="broadcast-player-timeline"><span id="broadcast-player-current">00:00</span><input id="broadcast-player-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="再生位置"><span id="broadcast-player-duration">--:--</span></div>
@@ -197,6 +197,7 @@
       </section>
       <section id="broadcast-live-comments">
         <div class="broadcast-live-pane-title">コメント</div>
+        <div id="broadcast-live-stats"><span>来場者数 <strong id="broadcast-live-viewers">---</strong></span><span>コメント数 <strong id="broadcast-live-comment-count">0</strong></span><span>放送残り <strong id="broadcast-live-remaining">--:--</strong></span></div>
         <div id="broadcast-live-comments-content"></div>
       </section>
     </div>
