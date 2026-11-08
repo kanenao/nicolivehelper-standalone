@@ -479,6 +479,7 @@ function getWebPreferences() {
     nodeIntegration: false,
     contextIsolation: true,
     webSecurity: true,
+    webviewTag: true,
     allowRunningInsecureContent: false
   };
 }
