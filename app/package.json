@@ -1,7 +1,7 @@
 {
   "name": "nicolivehelper-standalone",
   "productName": "NicoLive Helper Standalone",
-  "version": "0.1.0-beta.11",
+  "version": "0.1.0-beta.12",
   "description": "NicoLive Helper Standalone Desktop Application",
   "main": "main.js",
   "author": "amano / komatti365",
@@ -52,7 +52,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "NicoLive Helper Standalone",
       "artifactName": "NicoLiveHelper-Standalone-v${version}-Setup.${ext}",
-      "license": "installer-license.txt"
+      "license": "installer-license.rtf",
+      "language": "1041"
     },
     "files": [
       "main.js",
@@ -61,7 +62,7 @@
       "src/**/*",
       "node_modules/**/*",
       "package.json",
-      "installer-license.txt"
+      "installer-license.rtf"
     ],
     "publish": {
       "provider": "github",
