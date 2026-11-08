@@ -44,6 +44,8 @@ var NicoLiveHelper = {
     _auto_enquete_timer: null,
     _auto_enquete_result_timer: null,
     _auto_enquete_state: null,
+    _auto_enquete_extension_video_id: null,
+    _auto_enquete_extension_total: 0,
     _remain_timer_format_type: 0,   ///< 再生中動画の時間表示フォーマット種別(0:残り時間,1:経過時間,2:動作再生終了時の枠残り時間)
 
     _comm: null,                        ///< WebSocket通信インスタンス
@@ -273,6 +275,36 @@ var NicoLiveHelper = {
         $( '#status-enquete' ).toggle( !!flg );
     },
 
+    /**
+     * 自動アンケートによる延長秒数をフッターに表示する.
+     * @param {number} latest 今回の延長秒数
+     * @param {number} total 現在の動画での累計延長秒数
+     */
+    setAutoEnqueteExtensionIndicator: function( latest, total ){
+        const lastSeconds = Math.max( 0, Math.floor( Number(latest) || 0 ) );
+        const totalSeconds = Math.max( 0, Math.floor( Number(total) || 0 ) );
+        const indicator = $( '#status-enquete-extension' );
+        if( !totalSeconds ){
+            indicator.hide();
+            return;
+        }
+        indicator.text( `⏱ 延長 +${totalSeconds}秒` );
+        indicator.attr( 'title', `今回 +${lastSeconds}秒 / この動画の累計 +${totalSeconds}秒` );
+        indicator.show();
+    },
+
+    /**
+     * 延長秒数を視聴者に運営コメントで知らせる.
+     */
+    announceAutoEnqueteExtension: function( latest, total ){
+        const message = `📊 アンケート結果により、この動画の再生終了予定を今回+${latest}秒延長しました（累計+${total}秒）。引き続き投票を行います。`;
+        try{
+            this.postCasterComment( message, '', '', false );
+        }catch( e ){
+            console.error( '[AutoEnquete] 延長告知コメントを送信できませんでした:', e );
+        }
+    },
+
     setAutoplayIndicator: function( flg ){
         if( flg ){
             $( '#status-autoplay' ).addClass( 'autoplaying' );
@@ -354,10 +386,19 @@ var NicoLiveHelper = {
         this._auto_enquete_timer = null;
         this._auto_enquete_result_timer = null;
         this._auto_enquete_state = null;
+        this._auto_enquete_extension_video_id = null;
+        this._auto_enquete_extension_total = 0;
         this.setEnqueteIndicator( false );
+        this.setAutoEnqueteExtensionIndicator( 0, 0 );
     },
 
     scheduleAutoEnquete: function(){
+        const videoId = this.currentVideo ? this.currentVideo.video_id : null;
+        if( this._auto_enquete_extension_video_id !== videoId ){
+            this._auto_enquete_extension_video_id = videoId;
+            this._auto_enquete_extension_total = 0;
+            this.setAutoEnqueteExtensionIndicator( 0, 0 );
+        }
         clearTimeout( this._auto_enquete_timer );
         clearTimeout( this._auto_enquete_result_timer );
         this._auto_enquete_timer = null;
@@ -477,6 +518,11 @@ var NicoLiveHelper = {
                 const now = GetCurrentTime();
                 const currentEnd = Number(this.currentVideo.play_end) || now;
                 this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
+                this._auto_enquete_extension_video_id = state.video_id;
+                this._auto_enquete_extension_total = (Number(this._auto_enquete_extension_total) || 0) + extension;
+                this.setAutoEnqueteExtensionIndicator( extension, this._auto_enquete_extension_total );
+                this.announceAutoEnqueteExtension( extension, this._auto_enquete_extension_total );
+
                 const remaining = Math.max( 1, this.currentVideo.play_end - now );
                 this.setNextPlayTimer( remaining );
                 this.saveActivePlaySession({
