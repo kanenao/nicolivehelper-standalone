@@ -2840,6 +2840,17 @@ var NicoLiveHelper = {
         } );
 
         // 放送管理画面
+        $( '#broadcast-auto-create-next' ).on( 'change', async ( ev ) => {
+            const enabled = !!ev.target.checked;
+            Config['auto-create-next'] = enabled;
+            const stored = await browser.storage.local.get( 'config' );
+            const config = Object.assign( {}, stored.config || {}, { 'auto-create-next': enabled } );
+            await browser.storage.local.set( { config } );
+            this.showAlert( enabled
+                ? '番組終了時に次枠作成ページを自動で開く設定にしました'
+                : '番組終了時の次枠作成ページ自動表示をOFFにしました' );
+        } );
+
         $( '#btn-broadcast-create-next' ).on( 'click', () => {
             const liveId = this.getLiveId();
             if( !liveId ){
@@ -3045,6 +3056,7 @@ var NicoLiveHelper = {
         let result = await browser.storage.local.get( 'config' );
         console.log( 'Config loaded:' );
         MergeSimpleObject( Config, result.config );
+        $( '#broadcast-auto-create-next' ).prop( 'checked', !!Config['auto-create-next'] );
         console.log( Config );
         this.updatePNameWhitelist();
 
