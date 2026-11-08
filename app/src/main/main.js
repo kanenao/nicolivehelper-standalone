@@ -174,7 +174,16 @@ var NicoLiveHelper = {
         if(!liveId){ if(state) state.textContent='番組に接続すると放送画面を表示します'; return; }
         const target = 'https://live.nicovideo.jp/watch/' + encodeURIComponent(liveId);
         if(state) state.textContent='放送画面を読み込み中…';
-        view.src = target;
+        // 同じ番組を更新する場合は src の再代入ではなく webview.reload() を使う。
+        try{
+            if(view.getURL && view.getURL() === target && view.reload){
+                view.reload();
+            }else{
+                view.src = target;
+            }
+        }catch(e){
+            view.src = target;
+        }
     },
 
     updateBroadcastDashboard: function(){
@@ -188,7 +197,10 @@ var NicoLiveHelper = {
         const comments=document.getElementById('broadcast-live-comment-count');
         const remaining=document.getElementById('broadcast-live-remaining');
         if(viewers){ const n=document.querySelector('#number-of-listeners'); viewers.textContent=n && n.textContent.trim() ? n.textContent.trim() : '取得待ち'; }
-        if(comments) comments.textContent=String(NicoLiveComment && NicoLiveComment.commentlog ? NicoLiveComment.commentlog.length : 0);
+        if(comments){
+            const received = (typeof NicoLiveComment !== 'undefined' && Array.isArray(NicoLiveComment.commentlog)) ? NicoLiveComment.commentlog.length : 0;
+            comments.textContent=FormatCommas(received);
+        }
         if(remaining) remaining.textContent=this.live_endtime ? format(this.live_endtime-GetCurrentTime()) : '--:--';
         const current=document.getElementById('broadcast-player-current');
         const duration=document.getElementById('broadcast-player-duration');
@@ -219,6 +231,7 @@ var NicoLiveHelper = {
         const forward=document.getElementById('broadcast-player-forward');
         const speed=document.getElementById('broadcast-player-speed');
         const state=document.getElementById('broadcast-player-state');
+        const view=document.getElementById('broadcast-live-webview');
         if(refresh && !refresh.dataset.bound){refresh.dataset.bound='1';refresh.addEventListener('click',()=>this.refreshBroadcastLivePage());}
         // NicoLiveの引用再生APIには一時停止・シーク・再生速度変更の操作口がないため、
         // 誤って視聴ページ内の別動画を操作しないよう、現在の引用動画の時間表示だけを同期する。
