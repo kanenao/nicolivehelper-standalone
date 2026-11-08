@@ -78,6 +78,8 @@ if (fs.existsSync(OLD_COOKIE_FILE) && !fs.existsSync(COOKIE_FILE)) {
 let mainWindow = null;
 let latestLvid = '';
 const subWindows = new Map();
+let nicoCreateWindow = null;
+const inAppNicoContents = new Set();
 const liveProp = {};
 
 let remoteServer = null;
@@ -554,6 +556,51 @@ function getMainWindowUrl(targetLvid) {
     fileUrlObj.search = `?lv=${targetLvid}`;
   }
   return fileUrlObj.href;
+}
+
+// ニコ生の番組作成画面をアプリ内ウィンドウで開く（既定セッションのCookieを共有）
+function openNicoLiveCreateWindow(reuseId = '') {
+  const createUrl = new URL('https://live2.nicovideo.jp/create');
+  if (reuseId && /^lv\\d+$/.test(String(reuseId))) {
+    createUrl.searchParams.set('reuse_id', String(reuseId));
+  }
+
+  if (nicoCreateWindow && !nicoCreateWindow.isDestroyed()) {
+    nicoCreateWindow.show();
+    nicoCreateWindow.focus();
+    if (nicoCreateWindow.webContents.getURL() !== createUrl.href) {
+      nicoCreateWindow.loadURL(createUrl.href);
+    }
+    return { success: true, reused: true };
+  }
+
+  nicoCreateWindow = new BrowserWindow({
+    width: 1040,
+    height: 820,
+    minWidth: 760,
+    minHeight: 600,
+    title: 'ニコ生 番組作成 - NicoLive Helper',
+    icon: path.join(__dirname, 'src', 'icons', 'icon-96.png'),
+    autoHideMenuBar: true,
+    webPreferences: getWebPreferences()
+  });
+  inAppNicoContents.add(nicoCreateWindow.webContents.id);
+  nicoCreateWindow.on('closed', () => { nicoCreateWindow = null; });
+  nicoCreateWindow.webContents.on('destroyed', () => {
+    inAppNicoContents.delete(nicoCreateWindow ? nicoCreateWindow.webContents.id : -1);
+  });
+  nicoCreateWindow.webContents.setWindowOpenHandler(({ url }) => {
+    try {
+      const target = new URL(url);
+      if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) {
+        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
+      }
+    } catch (e) {}
+    shell.openExternal(url);
+    return { action: 'deny' };
+  });
+  nicoCreateWindow.loadURL(createUrl.href);
+  return { success: true, reused: false };
 }
 
 // メインウィンドウの作成・表示
@@ -1379,6 +1426,10 @@ ipcMain.handle('load-live', async (event, lvid) => {
 
 
 
+ipcMain.handle('open-nicolive-create', (event, reuseId) => {
+  return openNicoLiveCreateWindow(reuseId || '');
+});
+
 ipcMain.handle('open-subwindow', (event, { url, width, height, title }) => {
   createSubWindow(url, { width, height, title });
 });
@@ -1471,6 +1522,16 @@ ipcMain.handle('get-cookies-for-sync', async () => {
 // 全 WebContents（メイン画面、window.open で開いたマイリストマネージャー・動画DB等の子ウィンドウ）共通のリンクハンドラ
 app.on('web-contents-created', (event, contents) => {
   contents.setWindowOpenHandler(({ url }) => {
+    if (inAppNicoContents.has(contents.id)) {
+      try {
+        const target = new URL(url);
+        if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) {
+          return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
+        }
+      } catch (e) {}
+      shell.openExternal(url);
+      return { action: 'deny' };
+    }
     if (url.startsWith('http://') || url.startsWith('https://')) {
       console.log(`[STSen] Opening external URL in default browser: ${url}`);
       shell.openExternal(url);
@@ -1486,6 +1547,15 @@ app.on('web-contents-created', (event, contents) => {
   });
 
   contents.on('will-navigate', (event, navigationUrl) => {
+    if (inAppNicoContents.has(contents.id)) {
+      try {
+        const target = new URL(navigationUrl);
+        if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) return;
+      } catch (e) {}
+      event.preventDefault();
+      shell.openExternal(navigationUrl);
+      return;
+    }
     if (navigationUrl.startsWith('http://') || navigationUrl.startsWith('https://')) {
       console.log(`[STSen] Intercepting navigation to external browser: ${navigationUrl}`);
       event.preventDefault();
