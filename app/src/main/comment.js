@@ -208,6 +208,7 @@ var NicoLiveComment = {
         if( !table ){
             return;
         }
+        let body = table.tBodies[0] || table.createTBody();
 
         this.commentlog.push( comment );
         if (window.RemoteHostBridge && window.RemoteHostBridge.onCommentReceived) {
@@ -215,11 +216,12 @@ var NicoLiveComment = {
         }
 
         // 表示行数に切り詰め
-        if( table.rows.length >= Config['comment-dispay-lines'] ){
-            table.deleteRow( table.rows.length - 1 );
+        const maxLines = Math.max( 1, parseInt(Config['comment-dispay-lines']) || 200 );
+        if( body.rows.length >= maxLines ){
+            body.deleteRow( body.rows.length - 1 );
         }
 
-        let tr = table.insertRow( 0 );
+        let tr = body.insertRow( 0 );
         tr.setAttribute( "tr_comment_by", comment.user_id );
 
         // NGスコアによる透過
@@ -440,6 +442,24 @@ var NicoLiveComment = {
             }
         } );
 
+        $( '#comment-filter' ).on( 'input', ( ev ) => {
+            const query = String(ev.target.value || '').toLocaleLowerCase();
+            const rows = document.querySelectorAll('#comment-table tbody tr');
+            let visible = 0;
+            rows.forEach(row => {
+                const match = !query || row.textContent.toLocaleLowerCase().includes(query);
+                row.hidden = !match;
+                if(match) visible++;
+            });
+            const count = document.getElementById('comment-visible-count');
+            if(count) count.textContent = visible + ' 件';
+        } );
+
+        $( '#comment-scroll-bottom' ).on( 'click', () => {
+            const view = document.getElementById('comment-view');
+            if(view) view.scrollTop = 0;
+        } );
+
         $.contextMenu( {
             selector: '#comment-table .comment_username',
             build: function( $triggerElement, e ){
@@ -478,6 +498,7 @@ var NicoLiveComment = {
         this.namemap = JSON.parse( localStorage.getItem( 'kotehan' ) ) || {};
         this.initUI();
         this.table = document.querySelector( '#comment-table' );
+        if( this.table && !this.table.tBodies.length ) this.table.createTBody();
     },
     destroy: function(){
         let id;
