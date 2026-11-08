@@ -336,6 +336,15 @@ var NicoLiveComment = {
         td = tr.insertCell( tr.cells.length );
         td.textContent = GetDateTimeString( comment.date * 1000 );
 
+        // 現在の検索条件を新着コメントにも適用し、表示件数を更新する。
+        const filter = document.getElementById('comment-filter');
+        const query = filter ? String(filter.value || '').toLocaleLowerCase() : '';
+        tr.hidden = !!query && !tr.textContent.toLocaleLowerCase().includes(query);
+        const visibleCount = document.getElementById('comment-visible-count');
+        if( visibleCount ){
+            visibleCount.textContent = table.tBodies[0].querySelectorAll('tr:not([hidden])').length + ' 件';
+        }
+
         // 自動コテハン
         this.autoKotehan( comment );
 
