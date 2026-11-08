@@ -185,6 +185,7 @@ ipcRenderer.on('remote-host-execute-action', (event, data) => {
 });
 
 const stsenApi = {
+  openNicoLiveCreate: (reuseId) => ipcRenderer.invoke('open-nicolive-create', reuseId || ''),
   openLoginWindow: () => ipcRenderer.invoke('open-login-window'),
   logout: () => ipcRenderer.invoke('logout'),
   setUserSession: (val) => ipcRenderer.invoke('set-user-session', val),
