@@ -456,7 +456,12 @@ var NicoLiveHelper = {
             if( keepWins && this.currentVideo && state.video_id === this.currentVideo.video_id ){
                 const totalVotes = keep + skip;
                 const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
-                const extension = repeatDelay + Math.max( 5, Math.round( repeatDelay * keepRatio ) );
+                const pollDurationValue = parseInt( Config['auto-enquete-duration'] );
+                const pollDuration = Number.isFinite( pollDurationValue ) ? Math.max( 5, pollDurationValue ) : 30;
+                const resultDurationValue = parseInt( Config['auto-enquete-result-display-duration'] );
+                const resultDuration = Number.isFinite( resultDurationValue ) ? Math.max( 0, resultDurationValue ) : 15;
+                // 次の投票開始から結果確定まで再生タイマーが先に切れないよう、1回分の投票時間も確保する。
+                const extension = repeatDelay + pollDuration + resultDuration + Math.max( 5, Math.round( repeatDelay * keepRatio ) );
                 const now = GetCurrentTime();
                 const currentEnd = Number(this.currentVideo.play_end) || now;
                 this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
