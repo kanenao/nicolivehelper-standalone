@@ -2931,6 +2931,8 @@ var NicoLiveHelper = {
 
             updateAccountUI();
             initRemoteClientUI();
+            window.__nicoliveHelperAccountUiReady = true;
+            if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('アカウント操作のイベント登録完了');
         }
     },
 
@@ -3272,6 +3274,8 @@ var NicoLiveHelper = {
                 return menuobj;
             }
         } );
+        window.__nicoliveHelperMainUiReady = true;
+        if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('メイン操作のイベント登録完了');
     },
 
     /**
@@ -3360,8 +3364,14 @@ var NicoLiveHelper = {
             await this.initUI();
         } catch (e) {
             console.error('[Init] UI initialization failed; continuing with remaining modules:', e);
+            showStartupDiagnostic('メイン画面の操作イベント登録に失敗しました: ' + (e && e.stack ? e.stack : String(e)));
         }
-        this.initBroadcastPlayerControls();
+        try {
+            this.initBroadcastPlayerControls();
+        } catch (e) {
+            console.error('[Init] Broadcast player controls failed:', e);
+            showStartupDiagnostic('放送画面コントロールの初期化に失敗しました: ' + (e && e.message ? e.message : String(e)));
+        }
 
         let lvid = GetParameterByName( 'lv' );
         console.log( 'lvid=' + lvid );
@@ -3400,6 +3410,7 @@ var NicoLiveHelper = {
                 await initializer();
             } catch (e) {
                 console.error(`[Init] ${name} initialization failed; continuing:`, e);
+                showStartupDiagnostic(name + ' 初期化エラー: ' + (e && e.stack ? e.stack : String(e)));
             }
         };
         await initModule('Database', () => DB.initDB());
@@ -3458,6 +3469,9 @@ var NicoLiveHelper = {
                 $( '#type-of-comment' ).val( 1 );
             }
         }
+
+        window.__nicoliveHelperInitCompleted = true;
+        if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('起動処理が最後まで完了しました');
 
         if( !this.isCaster() ){
             // 視聴者のときの再生履歴取得
