@@ -418,3 +418,10 @@ tr.white {
 tr.color_caster {
     background-color: #ffeeee;
 }
+
+
+/* 自動アンケート実施中インジケータ */
+#status-enquete {
+    font-size: 8pt;
+    font-weight: bold;
+}
