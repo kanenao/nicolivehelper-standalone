@@ -390,9 +390,9 @@ var NicoLiveHelper = {
     },
 
     scheduleAutoEnquete: function(){
-        const videoId = this.currentVideo ? this.currentVideo.video_id : null;
-        if( this._auto_enquete_extension_video_id !== videoId ){
-            this._auto_enquete_extension_video_id = videoId;
+        const currentVideoId = this.currentVideo ? this.currentVideo.video_id : null;
+        if( this._auto_enquete_extension_video_id !== currentVideoId ){
+            this._auto_enquete_extension_video_id = currentVideoId;
             this._auto_enquete_extension_total = 0;
             this.setAutoEnqueteExtensionIndicator( 0, 0 );
         }
@@ -405,9 +405,8 @@ var NicoLiveHelper = {
         const delay = Math.max( 0, parseInt( Config['auto-enquete-delay'] ) || 0 );
         const elapsed = Math.max( 0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()) );
         const wait = Math.max( 0, delay - elapsed );
-        const videoId = this.currentVideo.video_id;
         this._auto_enquete_timer = setTimeout( () => {
-            if( !this.currentVideo || this.currentVideo.video_id !== videoId ) return;
+            if( !this.currentVideo || this.currentVideo.video_id !== currentVideoId ) return;
             this.startAutoEnquete();
         }, wait * 1000 );
         console.log( `[AutoEnquete] ${wait}秒後にアンケートを開始します` );
