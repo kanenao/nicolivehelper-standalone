@@ -238,9 +238,21 @@ var NicoLiveHelper = {
         for(const button of [back,toggle,forward]) if(button){button.disabled=true;button.title='ニコ生の引用再生側に操作APIがないため未対応です';}
         if(speed){speed.disabled=true;speed.title='ニコ生の引用再生側に速度変更APIがないため未対応です';}
         if(state) state.textContent='ニコヘルの再生情報と同期します';
-        if(view){
-            view.addEventListener('did-fail-load',(event,code,description)=>{if(code!==-3 && state) state.textContent='放送画面の読み込みに失敗: '+description;});
-            view.addEventListener('did-finish-load',()=>{if(state) state.textContent='ニコ生の放送画面を表示中';});
+        if(view && !view.dataset.broadcastEventsBound){
+            view.dataset.broadcastEventsBound='1';
+            view.addEventListener('did-fail-load',(event,code,description,validatedURL,isMainFrame)=>{
+                if(code!==-3 && isMainFrame && state) state.textContent='放送画面の読み込みに失敗: '+description+' ('+code+')';
+                if(code!==-3) console.error('[BroadcastView] did-fail-load',code,description,validatedURL);
+            });
+            view.addEventListener('did-finish-load',()=>{if(state) state.textContent='ニコ生の放送画面を読み込みました';});
+            view.addEventListener('dom-ready',()=>{
+                const liveId=this.getLiveId();
+                if(!liveId) return;
+                const target='https://live.nicovideo.jp/watch/'+encodeURIComponent(liveId);
+                try{
+                    if(view.getURL && view.getURL()!==target) view.loadURL(target);
+                }catch(e){console.error('[BroadcastView] loadURL failed',e);}
+            });
         }
         this.updateBroadcastDashboard();
     },
@@ -1465,7 +1477,8 @@ var NicoLiveHelper = {
                 if( this.isCaster() && Config['auto-create-next'] ){
                     // 次枠作成も手動操作と同じ専用ウィンドウで開き、NicoLive Helper 内で管理する。
                     try {
-                        await stsen.openNicoLiveCreate( this.getLiveId() );
+                        const result = await window.stsen.openNicoLiveCreate( this.getLiveId() );
+            if( !result || result.success === false ) throw new Error( result && result.error || '次枠作成ページの読み込みに失敗しました' );
                     } catch( e ) {
                         console.error( '[Broadcast] 自動次枠作成画面を開けませんでした:', e );
                         this.showAlert( '次枠作成画面を開けませんでした。放送管理タブから再度お試しください。' );
@@ -2944,10 +2957,18 @@ var NicoLiveHelper = {
 
         // 次枠を作成
         $( '#create-next-live' ).on( 'click', async ( ev ) => {
-            let tab = browser.tabs.create( {
-                'active': true,
-                'url': `https://live2.nicovideo.jp/create?reuse_id=${this.getLiveId()}`
-            } );
+            const liveId = this.getLiveId();
+            if( !liveId ){
+                this.showAlert( '次枠作成には現在の番組への接続が必要です' );
+                return;
+            }
+            try {
+                const result = await window.stsen.openNicoLiveCreate( liveId );
+                if( !result || result.success === false ) throw new Error( result && result.error || '次枠作成ページの読み込みに失敗しました' );
+            } catch( e ) {
+                console.error( '[Broadcast] 次枠作成に失敗:', e );
+                this.showAlert( '次枠作成ページを開けませんでした: ' + (e.message || e) );
+            }
         } );
 
         // 放送管理画面
@@ -2969,7 +2990,8 @@ var NicoLiveHelper = {
                 return;
             }
             try {
-                await stsen.openNicoLiveCreate( liveId );
+                const result = await window.stsen.openNicoLiveCreate( liveId );
+                if( !result || result.success === false ) throw new Error( result && result.error || '次枠作成ページの読み込みに失敗しました' );
             } catch( e ) {
                 console.error( '[Broadcast] 次枠作成画面を開けませんでした:', e );
                 this.showAlert( 'ニコ生の番組作成画面を開けませんでした' );
