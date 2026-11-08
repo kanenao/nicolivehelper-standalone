@@ -2936,6 +2936,49 @@ var NicoLiveHelper = {
     },
 
     initUI: async function(){
+        const updateLabel = document.getElementById('app-update-status');
+        const renderUpdateStatus = (info) => {
+            if (!updateLabel || !info) return;
+            const version = info.version ? ' v' + info.version : '';
+            switch (info.status) {
+            case 'checking':
+                updateLabel.textContent = '更新を確認しています…';
+                break;
+            case 'available':
+                updateLabel.textContent = version + ' をダウンロードしています…';
+                break;
+            case 'downloading':
+                updateLabel.textContent = '更新をダウンロード中 ' + (info.percent || 0) + '%';
+                break;
+            case 'downloaded':
+                updateLabel.textContent = version + ' の更新準備が完了しました（終了時に適用）';
+                break;
+            case 'not-available':
+                updateLabel.textContent = '最新バージョンです' + (info.version ? '（v' + info.version + '）' : '');
+                break;
+            case 'unsupported':
+                updateLabel.textContent = info.message || 'インストーラー版で利用できます';
+                break;
+            case 'error':
+                updateLabel.textContent = '更新確認エラー: ' + (info.message || '詳細はログを確認してください');
+                break;
+            default:
+                updateLabel.textContent = '自動更新：起動後に確認します';
+            }
+        };
+        if (window.stsen && typeof window.stsen.onUpdateStatus === 'function') {
+            window.stsen.onUpdateStatus(renderUpdateStatus);
+        }
+        $( '#check-for-updates' ).on( 'click', async ( ev ) => {
+            ev.preventDefault();
+            if (!window.stsen || typeof window.stsen.checkForUpdates !== 'function') {
+                renderUpdateStatus({ status: 'unsupported', message: '更新機能が利用できません。' });
+                return;
+            }
+            renderUpdateStatus({ status: 'checking' });
+            const result = await window.stsen.checkForUpdates();
+            if (result && result.status && result.status !== 'checking') renderUpdateStatus(result);
+        } );
         $( '#btn-play-next' ).on( 'click', ( ev ) => {
             if (window.RemoteClient && window.RemoteClient.isConnected()) {
                 window.RemoteClient.sendAction('play-next');
