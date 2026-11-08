@@ -176,15 +176,15 @@ var NicoLiveHelper = {
         if(!liveId){ if(state) state.textContent='番組に接続すると放送画面を表示します'; return; }
         const target = 'https://live.nicovideo.jp/watch/' + encodeURIComponent(liveId);
         if(state) state.textContent='放送画面を読み込み中…';
-        // 同じ番組を更新する場合は src の再代入ではなく webview.reload() を使う。
         try{
-            if(view.getURL && view.getURL() === target && view.reload){
-                view.reload();
-            }else{
-                view.src = target;
+            // srcへの再代入は同じURLでも再読み込みになる。ロード中の古い遷移は停止してから更新する。
+            if(typeof view.isLoading === 'function' && view.isLoading() && typeof view.stop === 'function'){
+                view.stop();
             }
-        }catch(e){
             view.src = target;
+        }catch(e){
+            console.error('[BroadcastView] Failed to refresh:', e);
+            if(state) state.textContent='放送画面を更新できません: ' + String(e.message || e);
         }
     },
 
@@ -242,18 +242,15 @@ var NicoLiveHelper = {
         if(state) state.textContent='ニコヘルの再生情報と同期します';
         if(view && !view.dataset.broadcastEventsBound){
             view.dataset.broadcastEventsBound='1';
+            view.addEventListener('did-start-loading',()=>{
+                if(state) state.textContent='放送画面を読み込み中…';
+            });
             view.addEventListener('did-fail-load',(event,code,description,validatedURL,isMainFrame)=>{
                 if(code!==-3 && isMainFrame && state) state.textContent='放送画面の読み込みに失敗: '+description+' ('+code+')';
-                if(code!==-3) console.error('[BroadcastView] did-fail-load',code,description,validatedURL);
+                if(code!==-3 && isMainFrame) console.error('[BroadcastView] did-fail-load',code,description,validatedURL);
             });
-            view.addEventListener('did-finish-load',()=>{if(state) state.textContent='ニコ生の放送画面を読み込みました';});
-            view.addEventListener('dom-ready',()=>{
-                const liveId=this.getLiveId();
-                if(!liveId) return;
-                const target='https://live.nicovideo.jp/watch/'+encodeURIComponent(liveId);
-                try{
-                    if(view.getURL && view.getURL()!==target) view.loadURL(target);
-                }catch(e){console.error('[BroadcastView] loadURL failed',e);}
+            view.addEventListener('did-finish-load',()=>{
+                if(state) state.textContent='ニコ生の放送画面を読み込みました';
             });
         }
         this.updateBroadcastDashboard();

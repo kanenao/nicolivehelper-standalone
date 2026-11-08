@@ -1537,17 +1537,30 @@ ipcMain.handle('get-cookies-for-sync', async () => {
   }));
 });
 
-// 全 WebContents（メイン画面、window.open で開いたマイリストマネージャー・動画DB等の子ウィンドウ）共通のリンクハンドラ
+// アプリ内のニコ生ページおよび放送画面 WebView では、ニコニコ関連ページの遷移をアプリ内に保持する。
+function isAllowedNicoInAppUrl(rawUrl) {
+  try {
+    const target = new URL(rawUrl);
+    return target.protocol === 'https:' &&
+      (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'));
+  } catch (e) {
+    return false;
+  }
+}
+
+// 全 WebContents（メイン画面、アプリ内ニコ生ウィンドウ、放送画面 WebView）共通のリンクハンドラ
 app.on('web-contents-created', (event, contents) => {
+  const isEmbeddedNicoContents = () =>
+    inAppNicoContents.has(contents.id) || contents.getType() === 'webview';
+
   contents.setWindowOpenHandler(({ url }) => {
-    if (inAppNicoContents.has(contents.id)) {
-      try {
-        const target = new URL(url);
-        if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) {
-          return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
-        }
-      } catch (e) {}
-      shell.openExternal(url);
+    if (isEmbeddedNicoContents()) {
+      if (isAllowedNicoInAppUrl(url)) {
+        return { action: 'allow', overrideBrowserWindowOptions: { webPreferences: getWebPreferences(), autoHideMenuBar: true } };
+      }
+      if (url.startsWith('http://') || url.startsWith('https://')) {
+        shell.openExternal(url);
+      }
       return { action: 'deny' };
     }
     if (url.startsWith('http://') || url.startsWith('https://')) {
@@ -1564,14 +1577,24 @@ app.on('web-contents-created', (event, contents) => {
     };
   });
 
+  // WebView / アプリ内ニコ生ページから開かれた子ウィンドウもアプリ内扱いにする。
+  contents.on('did-create-window', (childWindow) => {
+    if (!isEmbeddedNicoContents() || !childWindow || !childWindow.webContents) return;
+    const childContents = childWindow.webContents;
+    inAppNicoContents.add(childContents.id);
+    childContents.once('destroyed', () => inAppNicoContents.delete(childContents.id));
+    childWindow.once('closed', () => inAppNicoContents.delete(childContents.id));
+  });
+
+  contents.once('destroyed', () => inAppNicoContents.delete(contents.id));
+
   contents.on('will-navigate', (event, navigationUrl) => {
-    if (inAppNicoContents.has(contents.id)) {
-      try {
-        const target = new URL(navigationUrl);
-        if (target.protocol === 'https:' && (target.hostname === 'nicovideo.jp' || target.hostname.endsWith('.nicovideo.jp'))) return;
-      } catch (e) {}
+    if (isEmbeddedNicoContents()) {
+      if (isAllowedNicoInAppUrl(navigationUrl)) return;
       event.preventDefault();
-      shell.openExternal(navigationUrl);
+      if (navigationUrl.startsWith('http://') || navigationUrl.startsWith('https://')) {
+        shell.openExternal(navigationUrl);
+      }
       return;
     }
     if (navigationUrl.startsWith('http://') || navigationUrl.startsWith('https://')) {
