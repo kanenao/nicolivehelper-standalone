@@ -24,6 +24,12 @@
 var Config = {
     'play-default-volume': 50,
     'autoplay-interval': 10,
+    'auto-enquete-enabled': false,
+    'auto-enquete-delay': 60,
+    'auto-enquete-duration': 30,
+    'auto-enquete-repeat-tie': true,
+    'auto-enquete-repeat-empty': true,
+    'auto-enquete-auto-skip': true,
     'play-in-time': false,
     'auto-extend': false,
     'auto-start': false,
