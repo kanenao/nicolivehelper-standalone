@@ -96,7 +96,7 @@ jobs:
           tag_name: ${{ steps.release_info.outputs.tag }}
           name: ${{ steps.release_info.outputs.tag }}
           draft: ${{ inputs.is_draft || false }}
-          prerelease: ${{ inputs.is_prerelease || false }}
+          prerelease: ${{ inputs.is_prerelease || contains(steps.release_info.outputs.tag, '-') }}
           generate_release_notes: true
           files: |
             app/dist/*.exe
