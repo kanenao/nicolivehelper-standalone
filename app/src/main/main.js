@@ -174,6 +174,14 @@ var NicoLiveHelper = {
      * 自動再生のインジケータ表示を設定する.
      * @param flg
      */
+    /**
+     * アンケート実施中インジケータを設定する.
+     * @param flg
+     */
+    setEnqueteIndicator: function( flg ){
+        $( '#status-enquete' ).toggle( !!flg );
+    },
+
     setAutoplayIndicator: function( flg ){
         if( flg ){
             $( '#status-autoplay' ).addClass( 'autoplaying' );
@@ -255,6 +263,7 @@ var NicoLiveHelper = {
         this._auto_enquete_timer = null;
         this._auto_enquete_result_timer = null;
         this._auto_enquete_state = null;
+        this.setEnqueteIndicator( false );
     },
 
     scheduleAutoEnquete: function(){
@@ -291,8 +300,10 @@ var NicoLiveHelper = {
         if( !started ){
             this.showAlert( '自動アンケートを開始できませんでした。ログイン状態と配信主権限を確認してください。' );
             this._auto_enquete_state = null;
+            this.setEnqueteIndicator( false );
             return;
         }
+        this.setEnqueteIndicator( true );
         const duration = Math.max( 5, parseInt( Config['auto-enquete-duration'] ) || 30 );
         this._auto_enquete_timer = setTimeout( async () => {
             if( this._auto_enquete_state !== state ) return;
@@ -301,6 +312,7 @@ var NicoLiveHelper = {
             if( !items ){
                 await this.enqueteEnd();
                 this._auto_enquete_state = null;
+                this.setEnqueteIndicator( false );
                 this.showAlert( 'アンケート結果をAPIから取得できませんでした。自動スキップは行いません。' );
                 return;
             }
@@ -314,6 +326,7 @@ var NicoLiveHelper = {
                 console.error( '[AutoEnquete] 必要な選択肢が結果にありません:', items );
                 await this.enqueteEnd();
                 this._auto_enquete_state = null;
+                this.setEnqueteIndicator( false );
                 this.showAlert( 'アンケート結果の選択肢を判定できませんでした。自動スキップは行いません。' );
                 return;
             }
@@ -347,6 +360,7 @@ var NicoLiveHelper = {
         const state = this._auto_enquete_state;
         if( !state ) return;
         await this.enqueteEnd();
+        this.setEnqueteIndicator( false );
         const keep = counts['この動画を続ける'];
         const skip = counts['次の動画へ'];
         const noVotes = keep === 0 && skip === 0;
