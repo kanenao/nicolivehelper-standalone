@@ -166,6 +166,29 @@ var NicoLiveHelper = {
      * 経過時間表示のバー長を設定する.
      * @param p パーセンテージ数
      */
+    initBroadcastPlayerControls: function(){
+        const view = document.getElementById( 'broadcast-live-webview' );
+        const seek = document.getElementById( 'broadcast-player-seek' );
+        const current = document.getElementById( 'broadcast-player-current' );
+        const duration = document.getElementById( 'broadcast-player-duration' );
+        const toggle = document.getElementById( 'broadcast-player-toggle' );
+        const state = document.getElementById( 'broadcast-player-state' );
+        const speed = document.getElementById( 'broadcast-player-speed' );
+        if( !view || !seek || view.dataset.controlsReady === '1' ) return;
+        view.dataset.controlsReady = '1';
+        let seeking = false;
+        const format = ( value ) => { if( !Number.isFinite( value ) || value < 0 ) return '--:--'; const sec=Math.floor(value), h=Math.floor(sec/3600), m=Math.floor((sec%3600)/60), s=sec%60; return h>0 ? String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0') : String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); };
+        const run = async ( action, value ) => { try { const result=await view.executeJavaScript(`(() => { const v=document.querySelector('video'); if(!v) return {found:false}; const a=${JSON.stringify(action)}, x=${JSON.stringify(value)}; if(a==='toggle'){if(v.paused)v.play().catch(()=>{});else v.pause();}else if(a==='seek'){v.currentTime=Math.max(0,Math.min(Number.isFinite(v.duration)?v.duration:Infinity,v.currentTime+x));}else if(a==='speed'){v.playbackRate=x;} return {found:true,rate:v.playbackRate}; })()`,true); state.textContent=result&&result.found?'操作を反映しました':'映像プレイヤーを検出できません'; } catch(e){state.textContent='操作できません（プレイヤー読込中）';} };
+        document.getElementById('broadcast-player-back').addEventListener('click',()=>run('seek',-10));
+        document.getElementById('broadcast-player-forward').addEventListener('click',()=>run('seek',10));
+        toggle.addEventListener('click',()=>run('toggle'));
+        speed.addEventListener('change',()=>run('speed',Number(speed.value)));
+        seek.addEventListener('input',()=>{seeking=true;current.textContent=format(Number(seek.value)/1000*Number(seek.dataset.duration||0));});
+        seek.addEventListener('change',()=>{const d=Number(seek.dataset.duration||0);if(d>0)run('seek',Number(seek.value)/1000*d-Number(seek.dataset.current||0));seeking=false;});
+        view.addEventListener('dom-ready',()=>{state.textContent='映像を読み込みました';});
+        setInterval(async()=>{try{const p=await view.executeJavaScript(`(()=>{const v=document.querySelector('video');return v?{time:v.currentTime,duration:v.duration,paused:v.paused,rate:v.playbackRate}:null;})()`,true);if(!p||!Number.isFinite(p.time)){state.textContent='映像プレイヤーを検出中…';return;}current.textContent=format(p.time);duration.textContent=format(p.duration);seek.dataset.duration=Number.isFinite(p.duration)?p.duration:0;seek.dataset.current=p.time;if(!seeking)seek.value=Number.isFinite(p.duration)&&p.duration>0?Math.round(p.time/p.duration*1000):0;toggle.textContent=p.paused?'▶ 再生':'⏸ 停止';state.textContent='再生中 '+Number(p.rate||1).toFixed(2)+'x';}catch(e){state.textContent='映像プレイヤー待機中';}},700);
+    },
+
     setProgressMain: function( p ){
         $( '#progressbar-main' ).width( p + "%" );
     },
@@ -3102,6 +3125,7 @@ var NicoLiveHelper = {
         }
 
         this.initUI();
+        this.initBroadcastPlayerControls();
 
         // 放送画面タブに既存のコメントUIを配置し、映像と左右分割で表示する。
         $( '#broadcast-live-comments-content' ).append( $( '#tab-comment-body' ) );
