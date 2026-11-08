@@ -190,7 +190,8 @@ var NicoLiveHelper = {
         if( !question || items.length < 2 || !this.isConnected() || !this.isCaster() ) return false;
         const url = `https://live2.nicovideo.jp/unama/watch/${this.getLiveId()}/enquete`;
         try{
-            const res = await HttpFetch( 'POST', url, {
+            const res = await fetch( url, {
+                method: 'POST',
                 headers: {
                     'Content-type': 'application/json;charset=utf-8',
                     'X-Public-Api-Token': this.liveProp.site.relive.csrfToken
@@ -211,7 +212,8 @@ var NicoLiveHelper = {
     enqueteShowResult: async function(){
         const url = `https://live2.nicovideo.jp/unama/watch/${this.getLiveId()}/enquete/result`;
         try{
-            const res = await HttpFetch( 'POST', url, {
+            const res = await fetch( url, {
+                method: 'POST',
                 headers: {'X-Public-Api-Token': this.liveProp.site.relive.csrfToken}
             } );
             if( !res.ok ) console.error( '[AutoEnquete] show result failed:', res.status, await res.text() );
@@ -225,7 +227,8 @@ var NicoLiveHelper = {
     enqueteEnd: async function(){
         const url = `https://live2.nicovideo.jp/unama/watch/${this.getLiveId()}/enquete`;
         try{
-            const res = await HttpFetch( 'DELETE', url, {
+            const res = await fetch( url, {
+                method: 'DELETE',
                 headers: {'X-Public-Api-Token': this.liveProp.site.relive.csrfToken}
             } );
             if( !res.ok ) console.error( '[AutoEnquete] end failed:', res.status, await res.text() );
