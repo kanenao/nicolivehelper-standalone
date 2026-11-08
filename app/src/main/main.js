@@ -1355,10 +1355,13 @@ var NicoLiveHelper = {
                 this.setAutoplayIndicator( false );
 
                 if( this.isCaster() && Config['auto-create-next'] ){
-                    let tab = browser.tabs.create( {
-                        'active': true,
-                        'url': `https://live2.nicovideo.jp/create?reuse_id=${this.getLiveId()}`
-                    } );
+                    // 次枠作成も手動操作と同じ専用ウィンドウで開き、NicoLive Helper 内で管理する。
+                    try {
+                        await stsen.openNicoLiveCreate( this.getLiveId() );
+                    } catch( e ) {
+                        console.error( '[Broadcast] 自動次枠作成画面を開けませんでした:', e );
+                        this.showAlert( '次枠作成画面を開けませんでした。放送管理タブから再度お試しください。' );
+                    }
                 }
 
                 if( Config['auto-close-livepage'] ){
