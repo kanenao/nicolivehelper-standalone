@@ -3327,20 +3327,36 @@ var NicoLiveHelper = {
         console.log( Config );
         this.updatePNameWhitelist();
 
-        // 設定が更新されたときの再読み込み
-        browser.storage.onChanged.addListener( ( changes, area ) => {
-            if( changes.config ){
-                MergeSimpleObject( Config, changes.config.newValue );
-                console.log( Config );
-                if( typeof Discord !== 'undefined' ){
-                    Discord.init(); // webhook URLをConfigから読み込む
-                }
-                NicoLiveRequest.loadNGVideo();
-                this.updatePNameWhitelist();
+        // 設定が更新されたときの再読み込み。
+        // preload/Storage API が利用できなくても、ここで初期化全体を停止させない。
+        if (typeof browser !== 'undefined' &&
+            browser.storage &&
+            browser.storage.onChanged &&
+            typeof browser.storage.onChanged.addListener === 'function') {
+            try {
+                browser.storage.onChanged.addListener( ( changes, area ) => {
+                    if( changes.config ){
+                        try {
+                            MergeSimpleObject( Config, changes.config.newValue || {} );
+                            console.log( Config );
+                            if( typeof Discord !== 'undefined' ){
+                                Discord.init(); // webhook URLをConfigから読み込む
+                            }
+                            NicoLiveRequest.loadNGVideo();
+                            this.updatePNameWhitelist();
+                        } catch (e) {
+                            console.error('[Storage] Failed to apply changed settings:', e);
+                        }
+                    }
+                } );
+            } catch (e) {
+                console.error('[Init] Failed to register storage change listener; continuing:', e);
             }
-        } );
+        } else {
+            console.error('[Init] browser.storage.onChanged is unavailable. UI will start in limited mode.');
+        }
 
-        // 先に全UIの操作イベントを登録する。放送情報取得が失敗してもボタン操作は可能にする。
+        // UIのイベントを先に登録する。Storage APIや放送情報取得の失敗でボタンが無反応にならないようにする。
         try {
             await this.initUI();
         } catch (e) {
@@ -3484,21 +3500,44 @@ var NicoLiveHelper = {
             }
         }, 1000 );
 
-        this.test();
+        // 起動時にテスト用データを書き込まない（本番UIの初期化には不要）。
     }
 };
 
 
+function showStartupDiagnostic(message) {
+    let banner = document.getElementById('app-startup-error');
+    if (!banner) {
+        banner = document.createElement('div');
+        banner.id = 'app-startup-error';
+        banner.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:999999;padding:10px 14px;background:#fff3cd;color:#664d03;border:1px solid #ffecb5;border-radius:4px;font-size:12px;white-space:pre-wrap;pointer-events:auto;';
+        document.body.appendChild(banner);
+    }
+    banner.textContent = String(message || '初期化エラーが発生しました。');
+}
+
+window.addEventListener('error', (event) => {
+    console.error('[Renderer] Uncaught error:', event.error || event.message);
+    showStartupDiagnostic('画面のJavaScriptエラー: ' + (event.message || (event.error && event.error.message) || '詳細は開発ログを確認してください'));
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+    const reason = event.reason;
+    console.error('[Renderer] Unhandled promise rejection:', reason);
+    showStartupDiagnostic('非同期処理エラー: ' + (reason && reason.message ? reason.message : String(reason)));
+});
+
 window.addEventListener( 'load', ( ev ) => {
+    if (typeof browser === 'undefined' || typeof window.stsen === 'undefined') {
+        console.error('[Init] Electron preload bridge is unavailable.', {
+            browserAvailable: typeof browser !== 'undefined',
+            stsenAvailable: typeof window.stsen !== 'undefined'
+        });
+        showStartupDiagnostic('アプリ連携機能（preload）が読み込まれていません。ボタン操作の一部が制限されます。アプリのログを確認してください。');
+    }
+
     NicoLiveHelper.init().catch( ( error ) => {
         console.error('[Init] Fatal startup error:', error);
-        let banner = document.getElementById('app-startup-error');
-        if (!banner) {
-            banner = document.createElement('div');
-            banner.id = 'app-startup-error';
-            banner.style.cssText = 'position:fixed;left:8px;right:8px;bottom:8px;z-index:99999;padding:10px 14px;background:#fff3cd;color:#664d03;border:1px solid #ffecb5;border-radius:4px;font-size:12px;';
-            document.body.appendChild(banner);
-        }
-        banner.textContent = '一部の初期化に失敗しました。詳細は開発ログを確認してください: ' + (error && error.message ? error.message : String(error));
+        showStartupDiagnostic('初期化エラー: ' + (error && error.message ? error.message : String(error)));
     } );
 } );
