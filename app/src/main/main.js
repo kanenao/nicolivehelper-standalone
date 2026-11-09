@@ -522,7 +522,7 @@ var NicoLiveHelper = {
         if( !state || !state.awaitingResult || state.finalizing || !chat ) return;
         const text = chat.text_notag || chat.text || '';
         const counts = {};
-        const re = /(この動画を続ける|次の動画へ)\\s*[（(：:]?\\s*(\\d+(?:\\.\\d+)?)\\s*%/g;
+        const re = /(この動画を続ける|次の動画へ)\s*[（(：:]?\s*(\d+(?:\.\d+)?)\s*%/g;
         let match;
         while( (match = re.exec( text )) !== null ){
             counts[match[1]] = parseFloat( match[2] );
