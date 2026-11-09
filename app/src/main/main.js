@@ -225,21 +225,27 @@ var NicoLiveHelper = {
             if(title) title.textContent='再生中の動画はありません';
             if(state) state.textContent='動画の再生待ち';
         }
+        // アンケートによる延長が発生している間は、延長後の実際の終了予定までを毎秒表示する。
+        const extensionCountdown = document.getElementById('broadcast-player-extension-countdown');
+        const hasSurveyExtension = !!(
+            this.currentVideo &&
+            this._auto_enquete_extension_video_id === this.currentVideo.video_id &&
+            Number(this._auto_enquete_extension_total) > 0 &&
+            Number.isFinite(Number(this.currentVideo.play_end))
+        );
+        if(extensionCountdown){
+            extensionCountdown.hidden = !hasSurveyExtension;
+            extensionCountdown.textContent = hasSurveyExtension
+                ? 'アンケート延長・終了まで ' + format(Number(this.currentVideo.play_end) - GetCurrentTime())
+                : '';
+        }
     },
 
     initBroadcastPlayerControls: function(){
         const refresh=document.getElementById('broadcast-live-refresh');
-        const back=document.getElementById('broadcast-player-back');
-        const toggle=document.getElementById('broadcast-player-toggle');
-        const forward=document.getElementById('broadcast-player-forward');
-        const speed=document.getElementById('broadcast-player-speed');
         const state=document.getElementById('broadcast-player-state');
         const view=document.getElementById('broadcast-live-webview');
         if(refresh && !refresh.dataset.bound){refresh.dataset.bound='1';refresh.addEventListener('click',()=>this.refreshBroadcastLivePage());}
-        // NicoLiveの引用再生APIには一時停止・シーク・再生速度変更の操作口がないため、
-        // 誤って視聴ページ内の別動画を操作しないよう、現在の引用動画の時間表示だけを同期する。
-        for(const button of [back,toggle,forward]) if(button){button.disabled=true;button.title='ニコ生の引用再生側に操作APIがないため未対応です';}
-        if(speed){speed.disabled=true;speed.title='ニコ生の引用再生側に速度変更APIがないため未対応です';}
         if(state) state.textContent='ニコヘルの再生情報と同期します';
         if(view && !view.dataset.broadcastEventsBound){
             view.dataset.broadcastEventsBound='1';
@@ -603,7 +609,15 @@ var NicoLiveHelper = {
                     return;
                 }
                 this._auto_enquete_repeat_timer = null;
-                console.log( '[AutoEnquete] 再投票待機が終了。次のアンケートを開始します' );
+                // 結果確定時に立てた finalizing/resultHandled を次ラウンド用に解除する。
+                // 解除しないと runAutoEnqueteRound の重複実行防止ガードに拒否され、再投票が始まらない。
+                state.finalizing = false;
+                state.resultHandled = false;
+                state.awaitingResult = false;
+                console.log( '[AutoEnquete] 再投票待機が終了。次のアンケートを開始します', {
+                    video_id: state.video_id,
+                    round: state.round + 1
+                } );
                 this.runAutoEnqueteRound();
             };
             this._auto_enquete_repeat_timer = setTimeout( beginNextRoundWhenDue, repeatDelayMs );
