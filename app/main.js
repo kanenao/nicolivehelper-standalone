@@ -479,9 +479,14 @@ async function fetchMyCurrentLiveInfo() {
 }
 
 
+function stopLiveAutoDetectMonitor() {
+  if (liveAutoDetectTimer) clearInterval(liveAutoDetectTimer);
+  liveAutoDetectTimer = null;
+}
+
 // 自動接続が有効な場合、未検出の間は短い間隔で所有者の番組履歴を確認する。
 function startLiveAutoDetectMonitor(intervalMs = 10000) {
-  if (liveAutoDetectTimer) clearInterval(liveAutoDetectTimer);
+  stopLiveAutoDetectMonitor();
   liveAutoDetectTimer = setInterval(async () => {
     if (liveAutoDetectInProgress || !app.isReady()) return;
     liveAutoDetectInProgress = true;
@@ -740,6 +745,7 @@ async function openNicoLiveCreateWindow(reuseId = '') {
 // メインウィンドウの作成・表示
 function createOrFocusMainWindow(lvid = '') {
   const targetLvid = lvid || latestLvid;
+  if (lvid) stopLiveAutoDetectMonitor();
   if (targetLvid) latestLvid = targetLvid;
 
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -1720,6 +1726,7 @@ ipcMain.handle('load-live', async (event, lvid) => {
   const strId = String(lvid).trim();
   if (!strId) return null;
   const idWithLv = strId.startsWith('lv') ? strId : `lv${strId}`;
+  stopLiveAutoDetectMonitor();
   latestLvid = idWithLv;
   console.log(`[STSen] Manual load-live requested for: ${idWithLv}`);
   await fetchLiveInfoDirect(idWithLv);
