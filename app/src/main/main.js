@@ -425,29 +425,49 @@ var NicoLiveHelper = {
 
     runAutoEnqueteRound: async function(){
         const state = this._auto_enquete_state;
-        if( !state || !this.currentVideo || state.video_id !== this.currentVideo.video_id ) return;
+        if( !state || !this.currentVideo || state.video_id !== this.currentVideo.video_id || state.finalizing ) return;
         state.round++;
         state.awaitingResult = false;
         state.finalizing = false;
+        state.resultHandled = false;
+
+        // アンケート中に元の自動再生タイマーが先に満了すると、
+        // 結果確定前に次の動画へ移り、延長対象の動画がなくなってしまう。
+        // 投票開始時点で自動次動画タイマーを一時停止し、結果に応じて再設定する。
+        clearTimeout( this._autoplay_timer );
+        this._autoplay_timer = null;
+        console.log( '[AutoEnquete] 投票中は動画切替タイマーを一時停止します', {
+            video_id: state.video_id,
+            round: state.round,
+            play_end: this.currentVideo.play_end
+        } );
+
         const started = await this.enquete( 'この動画を続けるか、次の動画へ進むか投票してください', 'この動画を続ける', '次の動画へ' );
+        if( this._auto_enquete_state !== state || !this.currentVideo || this.currentVideo.video_id !== state.video_id ) return;
         if( !started ){
             this.showAlert( '自動アンケートを開始できませんでした。ログイン状態と配信主権限を確認してください。' );
             this._auto_enquete_state = null;
             this.setEnqueteIndicator( false );
+            this.resumeAutoPlayAfterEnquete( state.video_id );
             return;
         }
         this.setEnqueteIndicator( true );
-        const duration = Math.max( 5, parseInt( Config['auto-enquete-duration'] ) || 30 );
+        const durationValue = parseInt( Config['auto-enquete-duration'] );
+        const duration = Number.isFinite( durationValue ) ? Math.max( 5, durationValue ) : 30;
         this._auto_enquete_timer = setTimeout( async () => {
             if( this._auto_enquete_state !== state ) return;
+            this._auto_enquete_timer = null;
             state.awaitingResult = true;
             const items = await this.enqueteShowResult();
             if( this._auto_enquete_state !== state || state.finalizing ) return;
             if( !items ){
                 await this.enqueteEnd();
-                this._auto_enquete_state = null;
-                this.setEnqueteIndicator( false );
-                this.showAlert( 'アンケート結果をAPIから取得できませんでした。自動スキップは行いません。' );
+                if( this._auto_enquete_state === state ){
+                    this._auto_enquete_state = null;
+                    this.setEnqueteIndicator( false );
+                    this.resumeAutoPlayAfterEnquete( state.video_id );
+                    this.showAlert( 'アンケート結果をAPIから取得できませんでした。自動スキップは行いません。' );
+                }
                 return;
             }
             const counts = {};
@@ -459,19 +479,42 @@ var NicoLiveHelper = {
             if( counts['この動画を続ける'] === undefined || counts['次の動画へ'] === undefined ){
                 console.error( '[AutoEnquete] 必要な選択肢が結果にありません:', items );
                 await this.enqueteEnd();
-                this._auto_enquete_state = null;
-                this.setEnqueteIndicator( false );
-                this.showAlert( 'アンケート結果の選択肢を判定できませんでした。自動スキップは行いません。' );
+                if( this._auto_enquete_state === state ){
+                    this._auto_enquete_state = null;
+                    this.setEnqueteIndicator( false );
+                    this.resumeAutoPlayAfterEnquete( state.video_id );
+                    this.showAlert( 'アンケート結果の選択肢を判定できませんでした。自動スキップは行いません。' );
+                }
                 return;
             }
-            const resultDisplayDurationValue = parseInt( Config['auto-enquete-result-display-duration'] );
-            const resultDisplayDuration = Number.isFinite( resultDisplayDurationValue ) ? Math.max( 0, resultDisplayDurationValue ) : 15;
-            console.log( `[AutoEnquete] 結果を${resultDisplayDuration}秒間表示します` );
-            await new Promise( resolve => setTimeout( resolve, resultDisplayDuration * 1000 ) );
-            if( this._auto_enquete_state !== state || state.finalizing ) return;
-            state.finalizing = true;
-            await this.finishAutoEnqueteRound( counts );
+            this.queueAutoEnqueteFinalization( counts, state );
         }, duration * 1000 );
+        console.log( `[AutoEnquete] 投票時間を${duration}秒に設定しました` );
+    },
+
+    // アンケート終了後、現在動画の元の終了予定に合わせて自動再生タイマーを復帰する。
+    resumeAutoPlayAfterEnquete: function( videoId ){
+        if( !this.currentVideo || (videoId && this.currentVideo.video_id !== videoId) ) return;
+        const now = GetCurrentTime();
+        const end = Number(this.currentVideo.play_end) || now;
+        const remaining = Math.max( 1, end - now );
+        this.setNextPlayTimer( remaining );
+        console.log( `[AutoEnquete] 元の動画終了予定に自動再生タイマーを復帰します（残り${remaining}秒）` );
+    },
+
+    // API結果・運営コメント結果のどちらでも、同じ結果表示時間を経てから判定する。
+    queueAutoEnqueteFinalization: function( counts, state ){
+        if( !state || this._auto_enquete_state !== state || state.resultHandled || state.finalizing ) return;
+        state.finalizing = true;
+        const resultDisplayDurationValue = parseInt( Config['auto-enquete-result-display-duration'] );
+        const resultDisplayDuration = Number.isFinite( resultDisplayDurationValue ) ? Math.max( 0, resultDisplayDurationValue ) : 15;
+        console.log( `[AutoEnquete] 結果を${resultDisplayDuration}秒間表示します` );
+        clearTimeout( this._auto_enquete_result_timer );
+        this._auto_enquete_result_timer = setTimeout( () => {
+            this._auto_enquete_result_timer = null;
+            if( this._auto_enquete_state !== state || state.resultHandled ) return;
+            this.finishAutoEnqueteRound( counts );
+        }, resultDisplayDuration * 1000 );
     },
 
     handleAutoEnqueteResult: function( chat ){
@@ -485,67 +528,63 @@ var NicoLiveHelper = {
             counts[match[1]] = parseFloat( match[2] );
         }
         if( counts['この動画を続ける'] === undefined || counts['次の動画へ'] === undefined ) return;
-        state.finalizing = true;
-        clearTimeout( this._auto_enquete_result_timer );
-        this.finishAutoEnqueteRound( counts );
+        this.queueAutoEnqueteFinalization( counts, state );
     },
 
     finishAutoEnqueteRound: async function( counts ){
         const state = this._auto_enquete_state;
-        if( !state ) return;
-        await this.enqueteEnd();
-        this.setEnqueteIndicator( false );
-        const keep = counts['この動画を続ける'];
-        const skip = counts['次の動画へ'];
+        if( !state || state.resultHandled ) return;
+        state.resultHandled = true;
+        state.finalizing = true;
+
+        const keep = Number(counts['この動画を続ける']) || 0;
+        const skip = Number(counts['次の動画へ']) || 0;
         const noVotes = keep === 0 && skip === 0;
         const tie = keep === skip;
-        // 「この動画を続ける」が最多の場合は、次動画への票が最多になるまで再投票する。
         const keepWins = keep > skip;
         const repeat = keepWins || (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
-        if( repeat ){
-            // 再投票までの待機時間は、結果表示時間とは独立した設定で管理する。
+        const sameVideo = !!(this.currentVideo && state.video_id === this.currentVideo.video_id);
+
+        if( repeat && sameVideo ){
             const repeatDelayValue = parseInt( Config['auto-enquete-repeat-delay'] );
             const repeatDelay = Number.isFinite( repeatDelayValue ) ? Math.max( 0, repeatDelayValue ) : 15;
+            const pollDurationValue = parseInt( Config['auto-enquete-duration'] );
+            const pollDuration = Number.isFinite( pollDurationValue ) ? Math.max( 5, pollDurationValue ) : 30;
+            const resultDurationValue = parseInt( Config['auto-enquete-result-display-duration'] );
+            const resultDuration = Number.isFinite( resultDurationValue ) ? Math.max( 0, resultDurationValue ) : 15;
+            const totalVotes = keep + skip;
+            const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
+            const safetyMargin = Math.max( 5, Math.round( repeatDelay * keepRatio ) );
+            const extension = repeatDelay + pollDuration + resultDuration + safetyMargin;
 
-            // 次の投票開始から結果確定まで動画が切れないよう、再投票に必要な時間を確保する。
-            // 継続最多・同票・無投票のいずれも、実際に再投票する場合は同じ延長処理を行う。
-            if( this.currentVideo && state.video_id === this.currentVideo.video_id ){
-                const totalVotes = keep + skip;
-                const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
-                const pollDurationValue = parseInt( Config['auto-enquete-duration'] );
-                const pollDuration = Number.isFinite( pollDurationValue ) ? Math.max( 5, pollDurationValue ) : 30;
-                const resultDurationValue = parseInt( Config['auto-enquete-result-display-duration'] );
-                const resultDuration = Number.isFinite( resultDurationValue ) ? Math.max( 0, resultDurationValue ) : 15;
-                const extension = repeatDelay + pollDuration + resultDuration + Math.max( 5, Math.round( repeatDelay * keepRatio ) );
-                const now = GetCurrentTime();
-                const currentEnd = Number(this.currentVideo.play_end) || now;
-                this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
-                this._auto_enquete_extension_video_id = state.video_id;
-                this._auto_enquete_extension_total = (Number(this._auto_enquete_extension_total) || 0) + extension;
-                this.setAutoEnqueteExtensionIndicator( extension, this._auto_enquete_extension_total );
-                this.announceAutoEnqueteExtension( extension, this._auto_enquete_extension_total );
+            // 重要: アンケート終了APIの応答を待つ前に終了予定を延長する。
+            // API通信中に元の自動再生タイマーが満了して延長対象を失う問題を防ぐ。
+            const now = GetCurrentTime();
+            const currentEnd = Number(this.currentVideo.play_end) || now;
+            this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
+            this._auto_enquete_extension_video_id = state.video_id;
+            this._auto_enquete_extension_total = (Number(this._auto_enquete_extension_total) || 0) + extension;
+            this.setAutoEnqueteExtensionIndicator( extension, this._auto_enquete_extension_total );
+            this.announceAutoEnqueteExtension( extension, this._auto_enquete_extension_total );
 
-                const remaining = Math.max( 1, this.currentVideo.play_end - now );
-                this.setNextPlayTimer( remaining );
-                this.saveActivePlaySession({
-                    live_id: this.getLiveId(),
-                    video_id: this.currentVideo.video_id,
-                    title: this.currentVideo.title,
-                    length_ms: this.currentVideo.length_ms,
-                    play_begin: this.currentVideo.play_begin,
-                    play_end: this.currentVideo.play_end,
-                    auto_enquete_extension_total: this._auto_enquete_extension_total
-                });
-                const extensionReason = keepWins
-                    ? `継続票比率 ${Math.round(keepRatio * 100)}%`
-                    : (noVotes ? '無投票' : '同票');
-                console.log( `[AutoEnquete] ${extensionReason}のため再投票時間を含めて再生時間を${extension}秒延長します`, counts );
-            }
+            const remaining = Math.max( 1, this.currentVideo.play_end - now );
+            this.setNextPlayTimer( remaining );
+            this.saveActivePlaySession({
+                live_id: this.getLiveId(),
+                video_id: this.currentVideo.video_id,
+                title: this.currentVideo.title,
+                length_ms: this.currentVideo.length_ms,
+                play_begin: this.currentVideo.play_begin,
+                play_end: this.currentVideo.play_end,
+                auto_enquete_extension_total: this._auto_enquete_extension_total
+            });
+            const extensionReason = keepWins ? `継続票比率 ${Math.round(keepRatio * 100)}%` : (noVotes ? '無投票' : '同票');
+            console.log( `[AutoEnquete] ${extensionReason}: ${extension}秒延長（待機${repeatDelay}秒 + 次回投票${pollDuration}秒 + 結果表示${resultDuration}秒 + 安全余裕${safetyMargin}秒）。再投票待機を開始します`, counts );
 
-            console.log( keepWins ? '[AutoEnquete] 現在の動画を延長して再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
+            await this.enqueteEnd();
+            this.setEnqueteIndicator( false );
 
-            // 再投票待機は専用タイマーで管理し、投票終了・動画開始タイマーによる上書きや解除を防ぐ。
-            // Date.now()で期限を保持し、タイマーが早く発火した場合も残り時間を待ってから開始する。
+            // 延長タイマーを先に設定した後で、結果確定から指定秒数だけ次回投票を待つ。
             clearTimeout( this._auto_enquete_repeat_timer );
             const repeatDelayMs = repeatDelay * 1000;
             const repeatDueAt = Date.now() + repeatDelayMs;
@@ -564,18 +603,23 @@ var NicoLiveHelper = {
                     return;
                 }
                 this._auto_enquete_repeat_timer = null;
-                console.log( '[AutoEnquete] 再投票の待機時間が終了しました。次のアンケートを開始します。' );
+                console.log( '[AutoEnquete] 再投票待機が終了。次のアンケートを開始します' );
                 this.runAutoEnqueteRound();
             };
             this._auto_enquete_repeat_timer = setTimeout( beginNextRoundWhenDue, repeatDelayMs );
             return;
         }
+
+        // 再投票しない結果なら、投票中に一時停止していた元の終了予定へ戻す。
+        await this.enqueteEnd();
+        this.setEnqueteIndicator( false );
         this._auto_enquete_state = null;
         if( Config['auto-enquete-auto-skip'] && skip > keep ){
             console.log( '[AutoEnquete] 次の動画へ進みます', counts );
             this.playNext();
         }else{
             console.log( '[AutoEnquete] 現在の動画を続けます', counts );
+            this.resumeAutoPlayAfterEnquete( state.video_id );
         }
     },
 
