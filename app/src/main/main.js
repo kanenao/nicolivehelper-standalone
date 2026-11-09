@@ -206,7 +206,7 @@ var NicoLiveHelper = {
                 window.__nicoliveHelperPlaybackSyncInstalled = true;
                 window.__nicoliveHelperPlaybackSync = null;
                 window.addEventListener('message', (event) => {
-                    if (!event.origin || !/(^https:\\/\\/embed\\.nicovideo\\.jp$|^https:\\/\\/www?\\.nicovideo\\.jp$)/.test(event.origin)) return;
+                    if (!event.origin || !/^https:\\/\\/([a-z0-9-]+\\.)*nicovideo\\.jp$/i.test(event.origin)) return;
                     const payload = event.data;
                     if (!payload || payload.eventName !== 'playerMetadataChange' || !payload.data) return;
                     const currentTime = Number(payload.data.currentTime);
