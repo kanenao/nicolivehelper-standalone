@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, session, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, session, dialog, Menu, clipboard } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const url = require('url');
@@ -78,6 +78,8 @@ if (fs.existsSync(OLD_COOKIE_FILE) && !fs.existsSync(COOKIE_FILE)) {
 
 let mainWindow = null;
 let latestLvid = '';
+let liveAutoDetectTimer = null;
+let liveAutoDetectInProgress = false;
 const subWindows = new Map();
 let nicoCreateWindow = null;
 const inAppNicoContents = new Set();
@@ -340,24 +342,102 @@ async function fetchMyCurrentLiveInfo() {
     return { success: false, reason: 'not_logged_in', message: 'ニコニコにログインしていません。\n右上の「🔑 ログイン」からログインしてください。' };
   }
 
-  const userId = account.user.id;
-  console.log(`[STSen] Checking active live for user ${userId} (${account.user.nickname})...`);
-  try {
-    const cookies = await session.defaultSession.cookies.get({ domain: 'nicovideo.jp' });
-    const targetCookies = (cookies && cookies.length > 0) ? cookies : cachedCookies;
-    const cookieHeader = targetCookies.map(c => `${c.name}=${c.value}`).join('; ');
+  const userId = String(account.user.id);
+  console.log(\`[STSen] Checking active live for user \${userId} (\${account.user.nickname})...\`);
 
-    const url = `https://live.nicovideo.jp/watch/user/${userId}`;
+  const cookies = await session.defaultSession.cookies.get({ domain: 'nicovideo.jp' });
+  const targetCookies = (cookies && cookies.length > 0) ? cookies : cachedCookies;
+  const cookieHeader = targetCookies.map(c => \`\${c.name}=\${c.value}\`).join('; ');
+  const headers = {
+    'Cookie': cookieHeader,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    'Accept': 'application/json, text/plain, */*',
+    'X-Frontend-Id': '6',
+    'X-Frontend-Version': '0'
+  };
+
+  // ユーザーの番組履歴APIを先に確認。isIncludeNonPublic=true により、
+  // 番組表・検索に表示されない合言葉付き限定公開番組も所有者の履歴から探す。
+  try {
+    const historyUrl = 'https://live.nicovideo.jp/front/api/v2/user-broadcast-history' +
+      \`?providerId=\${encodeURIComponent(userId)}&providerType=user&isIncludeNonPublic=true&offset=0&limit=20&withTotalCount=true\`;
+    const historyResponse = await fetch(historyUrl, {
+      headers,
+      signal: AbortSignal.timeout(7000)
+    });
+
+    if (historyResponse.ok) {
+      const historyJson = await historyResponse.json();
+      const programs = historyJson && historyJson.data && Array.isArray(historyJson.data.programsList)
+        ? historyJson.data.programsList
+        : [];
+      const activeStatuses = new Set(['ON_AIR', 'RELEASED', 'RESERVED', 'OPEN', 'PREPARING']);
+      const activeItem = programs.find(item => {
+        const program = item && item.program ? item.program : {};
+        const status = String(
+          (program.schedule && program.schedule.status) ||
+          program.status ||
+          (item && item.schedule && item.schedule.status) ||
+          (item && item.status) || ''
+        ).toUpperCase();
+        return activeStatuses.has(status);
+      });
+
+      if (activeItem) {
+        const program = activeItem.program || {};
+        const idValue =
+          (activeItem.id && activeItem.id.value) ||
+          activeItem.id ||
+          (program.id && program.id.value) ||
+          program.nicoliveProgramId ||
+          '';
+        const pageUrl =
+          program.watchPageUrl ||
+          (program.schedule && program.schedule.watchPageUrl) ||
+          activeItem.watchPageUrl ||
+          '';
+        const idMatch = String(idValue).match(/lv\d+/) || String(pageUrl).match(/lv\d+/);
+        const lvid = idMatch ? idMatch[0] : '';
+        const status = String(
+          (program.schedule && program.schedule.status) ||
+          program.status ||
+          activeItem.status || ''
+        ).toUpperCase();
+
+        if (lvid) {
+          latestLvid = lvid;
+          console.log(\`[STSen] Active live found in owner history (including non-public): \${lvid} (status: \${status}) - "\${program.title || ''}"\`);
+          return {
+            success: true,
+            lvid,
+            status,
+            title: program.title || '',
+            source: 'user-broadcast-history'
+          };
+        }
+      }
+    } else {
+      console.warn(\`[STSen] Owner broadcast history returned HTTP \${historyResponse.status}; falling back to user page.\`);
+    }
+  } catch (err) {
+    console.warn('[STSen] Owner broadcast history lookup failed; falling back to user page:', err.message);
+  }
+
+  // フォールバック: 従来のユーザー放送ページ解析（公開番組・旧形式向け）。
+  try {
+    const url = \`https://live.nicovideo.jp/watch/user/\${encodeURIComponent(userId)}\`;
     const res = await fetch(url, {
       headers: {
         'Cookie': cookieHeader,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
-      }
+        'User-Agent': headers['User-Agent'],
+        'Accept': 'text/html,application/xhtml+xml'
+      },
+      signal: AbortSignal.timeout(7000)
     });
 
     if (!res.ok) {
-      console.warn(`[STSen] Fetch user live page returned HTTP ${res.status}`);
-      return { success: false, reason: 'http_error', status: res.status, message: `ユーザー配信ページの取得に失敗しました (HTTP ${res.status})` };
+      console.warn(\`[STSen] Fetch user live page returned HTTP \${res.status}\`);
+      return { success: false, reason: 'http_error', status: res.status, message: \`ユーザー配信ページの取得に失敗しました (HTTP \${res.status})\` };
     }
 
     const html = await res.text();
@@ -368,12 +448,8 @@ async function fetchMyCurrentLiveInfo() {
       const liveinfo = JSON.parse(raw);
       const prog = liveinfo.program;
       if (prog) {
-        // ステータス判定:
-        // ON_AIR: 放送中
-        // RELEASED / RESERVED: 枠作成直後（準備中・未開始・予約）
-        // OPEN: 開場中
-        const isActive = prog.status === 'ON_AIR' || prog.status === 'RELEASED' || prog.status === 'RESERVED' || prog.status === 'OPEN';
-
+        const status = String(prog.status || '').toUpperCase();
+        const isActive = ['ON_AIR', 'RELEASED', 'RESERVED', 'OPEN', 'PREPARING'].includes(status);
         if (isActive) {
           let lvid = prog.nicoliveProgramId;
           if (!lvid && prog.watchPageUrl) {
@@ -381,36 +457,50 @@ async function fetchMyCurrentLiveInfo() {
             if (matchLv) lvid = matchLv[0];
           }
           if (lvid) {
-            console.log(`[STSen] Active live detected: ${lvid} (status: ${prog.status}) - "${prog.title}"`);
+            console.log(\`[STSen] Active live detected from user page: \${lvid} (status: \${status}) - "\${prog.title}"\`);
             latestLvid = lvid;
             liveProp[lvid] = liveinfo;
             liveProp[lvid.replace(/^lv/, '')] = liveinfo;
-            return {
-              success: true,
-              lvid,
-              status: prog.status,
-              title: prog.title,
-              liveinfo
-            };
+            return { success: true, lvid, status, title: prog.title, liveinfo, source: 'user-watch-page' };
           }
-        } else {
-          console.log(`[STSen] Program found for user but status is '${prog.status}' (title: "${prog.title}")`);
-          const statusText = prog.status === 'ENDED' ? '終了済み' : prog.status;
-          return {
-            success: false,
-            reason: 'not_on_air',
-            status: prog.status,
-            title: prog.title,
-            message: `現在放送中または準備中の配信はありません。\n直近の番組「${prog.title}」は${statusText}です。`
-          };
         }
       }
     }
   } catch (err) {
-    console.error('[STSen] Error detecting current live:', err);
+    console.error('[STSen] Error detecting current live from user page:', err);
     return { success: false, reason: 'error', error: err.message, message: '自動検出中にエラーが発生しました: ' + err.message };
   }
-  return { success: false, reason: 'not_found', message: '現在放送中または準備中の配信枠が見つかりませんでした。\nニコニコ生放送で番組枠を開始または作成してから再度お試しください。' };
+
+  return {
+    success: false,
+    reason: 'not_found',
+    message: '現在放送中または準備中の配信枠が見つかりませんでした。\n限定公開番組の場合は、番組作成者とログインアカウントが一致しているか確認してください。'
+  };
+}
+
+
+// 自動接続が有効な場合、未検出の間は短い間隔で所有者の番組履歴を確認する。
+function startLiveAutoDetectMonitor(intervalMs = 10000) {
+  if (liveAutoDetectTimer) clearInterval(liveAutoDetectTimer);
+  liveAutoDetectTimer = setInterval(async () => {
+    if (liveAutoDetectInProgress || !app.isReady()) return;
+    liveAutoDetectInProgress = true;
+    try {
+      const detected = await fetchMyCurrentLiveInfo();
+      if (detected && detected.lvid) {
+        clearInterval(liveAutoDetectTimer);
+        liveAutoDetectTimer = null;
+        latestLvid = detected.lvid;
+        console.log(\`[STSen] Background auto-detect found a live: \${detected.lvid}; connecting.\`);
+        createOrFocusMainWindow(detected.lvid);
+      }
+    } catch (error) {
+      console.warn('[STSen] Background live auto-detect failed:', error.message);
+    } finally {
+      liveAutoDetectInProgress = false;
+    }
+  }, intervalMs);
+  console.log(\`[STSen] Background live detection monitor started (\${intervalMs}ms interval).\`);
 }
 
 // -------------------------------------------------------------
@@ -650,6 +740,7 @@ async function openNicoLiveCreateWindow(reuseId = '') {
 // メインウィンドウの作成・表示
 function createOrFocusMainWindow(lvid = '') {
   const targetLvid = lvid || latestLvid;
+  if (targetLvid) latestLvid = targetLvid;
 
   if (mainWindow && !mainWindow.isDestroyed()) {
     if (!isHeadlessArg) {
@@ -1616,6 +1707,7 @@ ipcMain.handle('load-live', async (event, lvid) => {
   const strId = String(lvid).trim();
   if (!strId) return null;
   const idWithLv = strId.startsWith('lv') ? strId : `lv${strId}`;
+  latestLvid = idWithLv;
   console.log(`[STSen] Manual load-live requested for: ${idWithLv}`);
   await fetchLiveInfoDirect(idWithLv);
   createOrFocusMainWindow(idWithLv);
@@ -1802,9 +1894,98 @@ app.on('web-contents-created', (event, contents) => {
   });
 });
 
-// 新規生成されるすべてのウィンドウでメニューバーを非表示
+// アプリ内のテキスト入力・選択で、右クリックと標準ショートカットのコピー／貼り付けを有効化する。
+function attachEditingSupport(win) {
+  if (!win || !win.webContents || win.isDestroyed()) return;
+  const contents = win.webContents;
+  if (contents.__nicoHelperEditingSupport) return;
+  contents.__nicoHelperEditingSupport = true;
+
+  contents.on('context-menu', (_event, params) => {
+    const template = [];
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo', label: '元に戻す' },
+        { role: 'redo', label: 'やり直す' },
+        { type: 'separator' },
+        { role: 'cut', label: '切り取り' },
+        { role: 'copy', label: 'コピー' },
+        { role: 'paste', label: '貼り付け' },
+        { role: 'delete', label: '削除' },
+        { type: 'separator' },
+        { role: 'selectAll', label: 'すべて選択' }
+      );
+    } else {
+      if (params.selectionText && params.selectionText.length > 0) {
+        template.push({ role: 'copy', label: '選択した文字をコピー' });
+      }
+      if (params.linkURL) {
+        if (template.length) template.push({ type: 'separator' });
+        template.push({
+          label: 'リンク先をコピー',
+          click: () => {
+            try { clipboard.writeText(params.linkURL); } catch (e) {}
+          }
+        });
+      }
+      if (template.length) template.push({ type: 'separator' });
+      template.push({ role: 'selectAll', label: 'すべて選択' });
+    }
+
+    const menu = Menu.buildFromTemplate(template);
+    const ownerWindow = BrowserWindow.fromWebContents(contents) || win;
+    menu.popup({ window: ownerWindow && !ownerWindow.isDestroyed() ? ownerWindow : undefined });
+  });
+
+  contents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    const key = String(input.key || '').toLowerCase();
+    const modifier = process.platform === 'darwin' ? input.meta : input.control;
+    if (modifier) {
+      switch (key) {
+        case 'c':
+          contents.copy();
+          event.preventDefault();
+          return;
+        case 'v':
+          contents.paste();
+          event.preventDefault();
+          return;
+        case 'x':
+          contents.cut();
+          event.preventDefault();
+          return;
+        case 'a':
+          contents.selectAll();
+          event.preventDefault();
+          return;
+        case 'z':
+          if (input.shift) contents.redo(); else contents.undo();
+          event.preventDefault();
+          return;
+        case 'y':
+          contents.redo();
+          event.preventDefault();
+          return;
+      }
+    }
+    if (input.shift && key === 'insert') {
+      contents.paste();
+      event.preventDefault();
+    } else if (modifier && key === 'insert') {
+      contents.copy();
+      event.preventDefault();
+    } else if (input.shift && key === 'delete') {
+      contents.cut();
+      event.preventDefault();
+    }
+  });
+}
+
+// 新規生成されるすべてのウィンドウでメニューバーを非表示にし、編集操作は右クリックメニューとショートカットで提供する。
 app.on('browser-window-created', (event, win) => {
   win.setMenuBarVisibility(false);
+  attachEditingSupport(win);
 });
 
 // アプリ起動フロー
@@ -1834,6 +2015,7 @@ app.whenReady().then(async () => {
   }
 
   createOrFocusMainWindow(initialLvid);
+  if (autoConnect && !initialLvid) startLiveAutoDetectMonitor(10000);
   setupAutoUpdater();
 
   app.on('activate', () => {
