@@ -206,13 +206,20 @@ var NicoLiveHelper = {
                 window.__nicoliveHelperPlaybackSyncInstalled = true;
                 window.__nicoliveHelperPlaybackSync = null;
                 window.addEventListener('message', (event) => {
-                    if (!event.origin || !/^https:\\/\\/([a-z0-9-]+\\.)*nicovideo\\.jp$/i.test(event.origin)) return;
+                    if (event.origin !== 'https://embed.nicovideo.jp') return;
                     const payload = event.data;
-                    if (!payload || payload.eventName !== 'playerMetadataChange' || !payload.data) return;
+                    if (!payload || !payload.playerId) return;
+                    if (payload.eventName === 'playerStatusChange' && payload.data && Number(payload.data.playerStatus) === 4) {
+                        window.__nicoliveHelperPlaybackSync = Object.assign({}, window.__nicoliveHelperPlaybackSync || {}, {
+                            ended: true, playerId: payload.playerId, receivedAt: Date.now()
+                        });
+                        return;
+                    }
+                    if (payload.eventName !== 'playerMetadataChange' || !payload.data) return;
                     const currentTime = Number(payload.data.currentTime);
                     const duration = Number(payload.data.duration);
                     if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0 || currentTime < 0) return;
-                    window.__nicoliveHelperPlaybackSync = { currentTime, duration, receivedAt: Date.now() };
+                    window.__nicoliveHelperPlaybackSync = { currentTime, duration, playerId: payload.playerId, receivedAt: Date.now(), ended: false };
                 }, false);
                 return true;
             })()`);
@@ -225,16 +232,69 @@ var NicoLiveHelper = {
         this._broadcastMediaPollBusy = true;
         try{
             const sample = await view.executeJavaScript('window.__nicoliveHelperPlaybackSync || null');
-            if(sample && Number.isFinite(Number(sample.currentTime)) && Number.isFinite(Number(sample.duration)) &&
-                Date.now() - Number(sample.receivedAt) < 3000){
-                this._broadcastMediaSync = {
-                    currentTime: Number(sample.currentTime),
-                    duration: Number(sample.duration),
-                    receivedAt: Number(sample.receivedAt)
-                };
+            if(sample && Number.isFinite(Number(sample.receivedAt)) && Date.now() - Number(sample.receivedAt) < 3000){
+                if(sample.ended){
+                    const wasEnded = this._broadcastMediaSync && this._broadcastMediaSync.ended;
+                    this._broadcastMediaSync = Object.assign({}, this._broadcastMediaSync || {}, {
+                        playerId: sample.playerId, ended: true, receivedAt: Number(sample.receivedAt)
+                    });
+                    if(!wasEnded) this.handleBroadcastPlayerEnded();
+                }else if(Number.isFinite(Number(sample.currentTime)) && Number.isFinite(Number(sample.duration))){
+                    this._broadcastMediaSync = {
+                        currentTime: Number(sample.currentTime), duration: Number(sample.duration),
+                        playerId: sample.playerId, receivedAt: Number(sample.receivedAt), ended: false
+                    };
+                }
             }
         }catch(e){ /* 放送画面の遷移中・破棄中は次回ポーリングで再試行 */ }
         finally{ this._broadcastMediaPollBusy = false; }
+    },
+
+    sendBroadcastPlayerCommand: async function(eventName, data){
+        const view = document.getElementById('broadcast-live-webview');
+        const sync = this._broadcastMediaSync;
+        if(!view || !view.executeJavaScript || !sync || !sync.playerId) {
+            this.showAlert('ニコ動プレーヤーとの接続を確認してください');
+            return false;
+        }
+        const payload = JSON.stringify({eventName, data: data || {}, playerId: sync.playerId, sourceConnectorType: 1});
+        try{
+            const result = await view.executeJavaScript(`(() => {
+                const message = ${payload};
+                const player = Array.from(document.querySelectorAll('iframe')).find(frame => {
+                    try { return new URL(frame.src).hostname === 'embed.nicovideo.jp'; }
+                    catch(e) { return false; }
+                });
+                if(!player || !player.contentWindow) return false;
+                player.contentWindow.postMessage(message, 'https://embed.nicovideo.jp');
+                return true;
+            })()`);
+            if(!result) this.showAlert('ニコ動プレーヤーが見つかりません');
+            return !!result;
+        }catch(e){
+            console.warn('[PlaybackControl] command failed:', e);
+            this.showAlert('プレーヤー操作に失敗しました');
+            return false;
+        }
+    },
+
+    handleBroadcastPlayerEnded: function(){
+        if(!this.currentVideo || !this.isConnected() || !this.isCaster()) return;
+        const videoId = this.currentVideo.video_id;
+        if(this._broadcastPlayerEndedVideoId === videoId) return;
+        this._broadcastPlayerEndedVideoId = videoId;
+        console.log('[PlaybackControl] 実プレーヤーの動画終了を検知:', videoId);
+        const state = this._auto_enquete_state;
+        if(state && state.video_id === videoId){
+            this.clearAutoEnqueteTimers();
+            if(state.surveyStarted) this.enqueteEnd();
+        }
+        this.clearVideoCompletionAnnouncement();
+        if(this._video_completion_announced_id !== videoId){
+            this._video_completion_announced_id = videoId;
+            this.postCasterComment('この動画が完走しました！', '', '', false);
+        }
+        this.setNextPlayTimer(0);
     },
 
     getSynchronizedPlaybackPosition: function(){
@@ -276,7 +336,7 @@ var NicoLiveHelper = {
             const length = synced ? synced.duration : Math.max(0,Number(this.currentVideo.length_ms||0)/1000);
             if(current) current.textContent=format(elapsed);
             if(duration) duration.textContent=format(length);
-            if(seek){ seek.max='1000'; seek.value=length>0?String(Math.min(1000,Math.round(elapsed/length*1000))):'0'; seek.disabled=true; }
+            if(seek){ seek.max=String(Math.max(1, Math.floor(length))); seek.value=String(Math.min(Math.floor(length),Math.floor(elapsed))); seek.disabled=!synced; }
             if(title) title.textContent=this.currentVideo.title||this.currentVideo.video_id||'再生中の動画なし';
             if(state) state.textContent=synced ? 'ニコ動プレーヤーの実再生位置と同期中' : 'ニコ動プレーヤーの再生位置を取得中（推定表示）';
         }else{
@@ -329,6 +389,32 @@ var NicoLiveHelper = {
         const state=document.getElementById('broadcast-player-state');
         const view=document.getElementById('broadcast-live-webview');
         if(refresh && !refresh.dataset.bound){refresh.dataset.bound='1';refresh.addEventListener('click',()=>this.refreshBroadcastLivePage());}
+        const bindButton = (id, eventName) => {
+            const button = document.getElementById(id);
+            if(button && !button.dataset.bound){
+                button.dataset.bound='1';
+                button.addEventListener('click',()=>this.sendBroadcastPlayerCommand(eventName));
+            }
+        };
+        bindButton('broadcast-player-play','play');
+        bindButton('broadcast-player-pause','pause');
+        const seek = document.getElementById('broadcast-player-seek');
+        if(seek && !seek.dataset.bound){
+            seek.dataset.bound='1';
+            seek.addEventListener('change',()=>this.sendBroadcastPlayerCommand('seek',{time:Number(seek.value)}));
+        }
+        const bindSkip = (id, offset) => {
+            const button=document.getElementById(id);
+            if(button && !button.dataset.bound){
+                button.dataset.bound='1';
+                button.addEventListener('click',()=>{
+                    const pos=this.getSynchronizedPlaybackPosition();
+                    if(pos) this.sendBroadcastPlayerCommand('seek',{time:Math.max(0,Math.min(pos.duration,pos.currentTime+offset))});
+                });
+            }
+        };
+        bindSkip('broadcast-player-back',-10);
+        bindSkip('broadcast-player-forward',10);
         if(state) state.textContent='ニコヘルの再生情報と同期します';
         if(view && !view.dataset.broadcastEventsBound){
             view.dataset.broadcastEventsBound='1';
