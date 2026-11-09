@@ -193,6 +193,62 @@ var NicoLiveHelper = {
         }
     },
 
+    // ニコ動プレーヤーから受け取った実再生位置。時刻ベースの推定値より優先して表示する。
+    _broadcastMediaSync: null,
+    _broadcastMediaPollBusy: false,
+
+    installBroadcastPlaybackSync: async function(){
+        const view = document.getElementById('broadcast-live-webview');
+        if(!view || !view.executeJavaScript || view.isLoading()) return;
+        try{
+            await view.executeJavaScript(`(() => {
+                if (window.__nicoliveHelperPlaybackSyncInstalled) return true;
+                window.__nicoliveHelperPlaybackSyncInstalled = true;
+                window.__nicoliveHelperPlaybackSync = null;
+                window.addEventListener('message', (event) => {
+                    if (!event.origin || !/(^https:\\/\\/embed\\.nicovideo\\.jp$|^https:\\/\\/www?\\.nicovideo\\.jp$)/.test(event.origin)) return;
+                    const payload = event.data;
+                    if (!payload || payload.eventName !== 'playerMetadataChange' || !payload.data) return;
+                    const currentTime = Number(payload.data.currentTime);
+                    const duration = Number(payload.data.duration);
+                    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0 || currentTime < 0) return;
+                    window.__nicoliveHelperPlaybackSync = { currentTime, duration, receivedAt: Date.now() };
+                }, false);
+                return true;
+            })()`);
+        }catch(e){ console.warn('[PlaybackSync] Player event listener setup failed:',e); }
+    },
+
+    pollBroadcastPlaybackPosition: async function(){
+        const view = document.getElementById('broadcast-live-webview');
+        if(!view || !view.executeJavaScript || view.isLoading() || this._broadcastMediaPollBusy) return;
+        this._broadcastMediaPollBusy = true;
+        try{
+            const sample = await view.executeJavaScript('window.__nicoliveHelperPlaybackSync || null');
+            if(sample && Number.isFinite(Number(sample.currentTime)) && Number.isFinite(Number(sample.duration)) &&
+                Date.now() - Number(sample.receivedAt) < 3000){
+                this._broadcastMediaSync = {
+                    currentTime: Number(sample.currentTime),
+                    duration: Number(sample.duration),
+                    receivedAt: Number(sample.receivedAt)
+                };
+            }
+        }catch(e){ /* 放送画面の遷移中・破棄中は次回ポーリングで再試行 */ }
+        finally{ this._broadcastMediaPollBusy = false; }
+    },
+
+    getSynchronizedPlaybackPosition: function(){
+        if(!this.currentVideo || !this._broadcastMediaSync) return null;
+        const sync = this._broadcastMediaSync;
+        if(Date.now() - sync.receivedAt > 3000) return null;
+        const expected = Number(this.currentVideo.length_ms || 0) / 1000;
+        if(expected <= 0 || sync.duration <= 0) return null;
+        // 別動画・広告などの時間情報を誤採用しないよう、動画長が近い場合だけ同期値を使う。
+        const tolerance = Math.max(3, expected * 0.015);
+        if(Math.abs(sync.duration - expected) > tolerance) return null;
+        return { currentTime: Math.min(sync.duration, sync.currentTime), duration: sync.duration };
+    },
+
     updateBroadcastDashboard: function(){
         const format = (seconds) => {
             if(!Number.isFinite(seconds)) return '--:--';
@@ -215,13 +271,14 @@ var NicoLiveHelper = {
         const state=document.getElementById('broadcast-player-state');
         const title=document.getElementById('broadcast-player-title');
         if(this.currentVideo){
-            const elapsed=Math.max(0,GetCurrentTime()-(this.currentVideo.play_begin||GetCurrentTime()));
-            const length=Math.max(0,Number(this.currentVideo.length_ms||0)/1000);
+            const synced = this.getSynchronizedPlaybackPosition();
+            const elapsed = synced ? synced.currentTime : Math.max(0,GetCurrentTime()-(this.currentVideo.play_begin||GetCurrentTime()));
+            const length = synced ? synced.duration : Math.max(0,Number(this.currentVideo.length_ms||0)/1000);
             if(current) current.textContent=format(elapsed);
             if(duration) duration.textContent=format(length);
             if(seek){ seek.max='1000'; seek.value=length>0?String(Math.min(1000,Math.round(elapsed/length*1000))):'0'; seek.disabled=true; }
             if(title) title.textContent=this.currentVideo.title||this.currentVideo.video_id||'再生中の動画なし';
-            if(state) state.textContent='ニコヘルの再生情報と同期中';
+            if(state) state.textContent=synced ? 'ニコ動プレーヤーの実再生位置と同期中' : 'ニコ動プレーヤーの再生位置を取得中（推定表示）';
         }else{
             if(current) current.textContent='00:00';
             if(duration) duration.textContent='--:--';
@@ -284,9 +341,15 @@ var NicoLiveHelper = {
             });
             view.addEventListener('did-finish-load',()=>{
                 if(state) state.textContent='ニコ生の放送画面を読み込みました';
+                this._broadcastMediaSync = null;
+                this.installBroadcastPlaybackSync();
             });
         }
         this.updateBroadcastDashboard();
+        this.installBroadcastPlaybackSync();
+        if(!this._broadcastPlaybackPollTimer){
+            this._broadcastPlaybackPollTimer = setInterval(() => this.pollBroadcastPlaybackPosition(), 500);
+        }
     },
 
     setProgressMain: function( p ){
@@ -2903,7 +2966,9 @@ var NicoLiveHelper = {
         // 動画の経過時間
         try{
             let current = this.currentVideo;
-            let remain = current.play_end - now;
+            const synced = this.getSynchronizedPlaybackPosition();
+            let elapsed = synced ? synced.currentTime : Math.max(0, now - current.play_begin);
+            let remain = synced ? Math.max(0, synced.duration - synced.currentTime) : current.play_end - now;
             if( remain < 0 ) remain = 0;
 
             let text = `${current.title}(-${GetTimeString( remain )})`;
@@ -2912,7 +2977,7 @@ var NicoLiveHelper = {
             default:
                 break;
             case 1:
-                text = `${current.title}(${GetTimeString( now - current.play_begin )})`;
+                text = `${current.title}(${GetTimeString( elapsed )})`;
                 break;
             case 2:
                 text = `${current.title}(枠残り${GetTimeString( this.live_endtime - current.play_end )})`;
@@ -2920,8 +2985,8 @@ var NicoLiveHelper = {
             }
             $( '#remaining-time-main' ).text( text );
 
-            let len = parseInt( current.length_ms / 1000 );
-            let t = now - current.play_begin;
+            let len = synced ? synced.duration : parseInt( current.length_ms / 1000 );
+            let t = elapsed;
 
             let percent = parseInt( (t / len) * 100 );
             if( percent > 100 ) percent = 100;
