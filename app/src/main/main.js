@@ -229,17 +229,18 @@ var NicoLiveHelper = {
         // アンケート延長による終了予定と、次回投票までの待機時間を別々に表示する。
         const extensionCountdown = document.getElementById('broadcast-player-extension-countdown');
         const repeatCountdown = document.getElementById('broadcast-player-repeat-countdown');
+        const extensionEndAt = this.currentVideo ? Number(this.currentVideo.play_end) : NaN;
         const hasSurveyExtension = !!(
             this.currentVideo &&
-            this._auto_enquete_extension_video_id === this.currentVideo.video_id &&
+            String(this._auto_enquete_extension_video_id) === String(this.currentVideo.video_id) &&
             Number(this._auto_enquete_extension_total) > 0 &&
-            Number.isFinite(Number(this._auto_enquete_extension_end_at || this.currentVideo.play_end))
+            Number.isFinite(extensionEndAt)
         );
         if(extensionCountdown){
-            const extensionEndAt = Number(this._auto_enquete_extension_end_at || (this.currentVideo && this.currentVideo.play_end));
             extensionCountdown.hidden = !hasSurveyExtension;
+            extensionCountdown.style.display = hasSurveyExtension ? 'inline' : 'none';
             extensionCountdown.textContent = hasSurveyExtension
-                ? '延長後の動画残り時間 ' + format(extensionEndAt - GetCurrentTime())
+                ? '延長後の動画残り時間 ' + format(Math.max(0, extensionEndAt - GetCurrentTime()))
                 : '';
         }
         const enqueteState = this._auto_enquete_state;
@@ -256,6 +257,7 @@ var NicoLiveHelper = {
                 ? Math.max(0, Math.ceil((Number(enqueteState.repeatDueAt) - Date.now()) / 1000))
                 : 0;
             repeatCountdown.hidden = !waitingForRepeat;
+            repeatCountdown.style.display = waitingForRepeat ? 'inline' : 'none';
             repeatCountdown.textContent = waitingForRepeat
                 ? '次回アンケートまで ' + format(waitSeconds)
                 : '';
@@ -908,7 +910,8 @@ var NicoLiveHelper = {
                         length_ms: this.currentVideo.length_ms,
                         play_begin: this.currentVideo.play_begin,
                         play_end: this.currentVideo.play_end,
-                        auto_enquete_extension_total: 0
+                        auto_enquete_extension_total: 0,
+                        auto_enquete_extension_end_at: null
                     });
 
                     let next = parseInt( this.currentVideo.length_ms / 1000 + Config['autoplay-interval'] );
