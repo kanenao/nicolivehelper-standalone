@@ -416,8 +416,29 @@ async function fetchMyCurrentLiveInfo() {
 // -------------------------------------------------------------
 // HTTP リクエストヘッダーのインターセプト（Cookie 強制注入）
 // -------------------------------------------------------------
+// アプリ内のニコ生ページ（WebView/番組作成ウィンドウ）はElectron標準のCookie・CORS処理を使う。
+// ファイル画面からのAPI通信向けに行うヘッダー変更をニコ生の視聴ページへ適用すると、
+// プレイヤーAPIや動画配信リクエストを壊す可能性があるため、対象外にする。
+function isEmbeddedNicoWebRequest(details) {
+  if (Number.isInteger(details && details.webContentsId) &&
+      inAppNicoContents.has(details.webContentsId)) {
+    return true;
+  }
+  // webContentsId が取得できない環境でも、ニコ生ページ自身が開始した通信は変更しない。
+  try {
+    const referrer = new URL(details && details.referrer ? details.referrer : '');
+    return referrer.protocol === 'https:' &&
+      (referrer.hostname === 'nicovideo.jp' || referrer.hostname.endsWith('.nicovideo.jp'));
+  } catch (e) {
+    return false;
+  }
+}
+
 function setupRequestHeaderInterceptor() {
   session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (isEmbeddedNicoWebRequest(details)) {
+      return callback({ requestHeaders: details.requestHeaders });
+    }
     const urlStr = details.url;
 
     try {
@@ -454,8 +475,12 @@ function setupRequestHeaderInterceptor() {
     callback({ requestHeaders: details.requestHeaders });
   });
 
-  // webSecurity: true 下で file:// からのニコニコ API 通信を可能にする CORS 補正
+  // webSecurity: true 下で file:// からのニコニコ API 通信を可能にする CORS 補正。
+  // ニコ生視聴ページ/WebViewの応答ヘッダーは変更せず、サイト本来のCORSポリシーを維持する。
   session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    if (isEmbeddedNicoWebRequest(details)) {
+      return callback({ responseHeaders: details.responseHeaders });
+    }
     const responseHeaders = Object.assign({}, details.responseHeaders);
     try {
       const parsedUrl = new URL(details.url);
