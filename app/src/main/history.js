@@ -130,6 +130,14 @@ var NicoLiveHistory = {
             CopyToClipboard( this.history[n].video_id );
             break;
 
+        case 'to_request':
+            NicoLiveRequest.addRequestDirect( this.history[n] );
+            break;
+
+        case 'to_stock':
+            NicoLiveStock.addStockDirect( this.history[n] );
+            break;
+
         case 'copy_all':
             let str = "";
             for( let i = 0, item; item = this.history[i]; i++ ){
@@ -228,6 +236,8 @@ var NicoLiveHistory = {
                     },
                     items: {
                         "play": {name: '再生する'},
+                        "to_request": {name: 'リクエストに追加'},
+                        "to_stock": {name: 'ストックに追加'},
                         "sep1": "---------",
                         "copy": {name: "動画IDをコピー"},
                         "copy_all": {name: "すべての動画IDをコピー"},
