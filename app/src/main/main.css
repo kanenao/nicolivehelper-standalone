@@ -531,3 +531,5 @@ tr.color_caster {
 #broadcast-live-stats{display:flex;flex-wrap:wrap;gap:14px;padding:7px 9px;background:#303030;color:#eee;border-bottom:1px solid #555;font-size:12px}#broadcast-live-stats strong{color:#69d8ff;font-variant-numeric:tabular-nums;margin-left:4px}#broadcast-live-refresh{float:right;margin-top:-3px;padding:1px 8px;font-size:11px}#broadcast-player-title{font-size:12px;color:#bfeaff;padding:2px 0}
 
 #broadcast-player-actions{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0}#broadcast-player-actions .btn{min-width:76px}#broadcast-player-seek{cursor:pointer}#broadcast-player-seek:disabled{cursor:not-allowed;opacity:.5}
+
+#broadcast-player-actions #broadcast-player-next{min-width:104px;font-weight:600}
