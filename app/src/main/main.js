@@ -498,7 +498,9 @@ var NicoLiveHelper = {
         const keepWins = keep > skip;
         const repeat = keepWins || (noVotes && Config['auto-enquete-repeat-empty']) || (tie && !noVotes && Config['auto-enquete-repeat-tie']);
         if( repeat ){
-            const repeatDelayValue = parseInt( Config['auto-enquete-repeat-delay'] );
+            // 再投票の待機時間は「アンケート結果の表示時間」と同じ設定値を使用する。
+            // 結果表示時間を変更すれば、次回投票までの待機時間も同時に変わる。
+            const repeatDelayValue = parseInt( Config['auto-enquete-result-display-duration'] );
             const repeatDelay = Number.isFinite( repeatDelayValue ) ? Math.max( 0, repeatDelayValue ) : 15;
 
             // 次の投票開始から結果確定まで動画が切れないよう、再投票に必要な時間を確保する。
