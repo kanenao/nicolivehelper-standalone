@@ -1381,6 +1381,7 @@ function startCdpMonitoring(wsUrl) {
 // -------------------------------------------------------------
 let updateCheckTimer = null;
 let updateDownloadedVersion = null;
+let updateReleaseNotes = '';
 let updateCheckInProgress = false;
 
 function emitAppUpdateStatus(status, extra = {}) {
@@ -1425,7 +1426,18 @@ function setupAutoUpdater() {
 
     autoUpdater.on('checking-for-update', () => emitAppUpdateStatus('checking'));
     autoUpdater.on('update-available', (info) => {
-      emitAppUpdateStatus('available', { version: info.version, releaseName: info.releaseName || '' });
+      if (Array.isArray(info.releaseNotes)) {
+        updateReleaseNotes = info.releaseNotes.map(item => item && item.note ? item.note : '').filter(Boolean).join('\\n').slice(0, 4000);
+      } else if (typeof info.releaseNotes === 'string') {
+        updateReleaseNotes = info.releaseNotes.slice(0, 4000);
+      } else {
+        updateReleaseNotes = info.releaseName || '';
+      }
+      emitAppUpdateStatus('available', {
+        version: info.version,
+        releaseName: info.releaseName || '',
+        releaseNotes: updateReleaseNotes
+      });
     });
     autoUpdater.on('update-not-available', (info) => {
       emitAppUpdateStatus('not-available', { version: info.version || app.getVersion() });
@@ -1434,12 +1446,13 @@ function setupAutoUpdater() {
       emitAppUpdateStatus('downloading', {
         percent: Math.max(0, Math.min(100, Math.round(progress.percent || 0))),
         transferred: progress.transferred || 0,
-        total: progress.total || 0
+        total: progress.total || 0,
+        releaseNotes: updateReleaseNotes
       });
     });
     autoUpdater.on('update-downloaded', async (info) => {
       updateDownloadedVersion = info.version;
-      emitAppUpdateStatus('downloaded', { version: info.version });
+      emitAppUpdateStatus('downloaded', { version: info.version, releaseNotes: updateReleaseNotes });
       try {
         const result = await dialog.showMessageBox(
           mainWindow && !mainWindow.isDestroyed() ? mainWindow : null,
