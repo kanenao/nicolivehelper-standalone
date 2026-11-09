@@ -42,6 +42,7 @@ var NicoLiveHelper = {
 
     _autoplay_timer: null,  ///< 自動再生用タイマー
     _auto_enquete_timer: null,
+    _auto_enquete_repeat_timer: null, // 再投票待機専用。投票タイマーと分離する
     _auto_enquete_result_timer: null,
     _auto_enquete_state: null,
     _auto_enquete_extension_video_id: null,
@@ -379,8 +380,10 @@ var NicoLiveHelper = {
 
     clearAutoEnqueteTimers: function(){
         clearTimeout( this._auto_enquete_timer );
+        clearTimeout( this._auto_enquete_repeat_timer );
         clearTimeout( this._auto_enquete_result_timer );
         this._auto_enquete_timer = null;
+        this._auto_enquete_repeat_timer = null;
         this._auto_enquete_result_timer = null;
         this._auto_enquete_state = null;
         this._auto_enquete_extension_video_id = null;
@@ -397,8 +400,10 @@ var NicoLiveHelper = {
             this.setAutoEnqueteExtensionIndicator( 0, 0 );
         }
         clearTimeout( this._auto_enquete_timer );
+        clearTimeout( this._auto_enquete_repeat_timer );
         clearTimeout( this._auto_enquete_result_timer );
         this._auto_enquete_timer = null;
+        this._auto_enquete_repeat_timer = null;
         this._auto_enquete_result_timer = null;
         this._auto_enquete_state = null;
         if( !Config['auto-enquete-enabled'] || !this.currentVideo || !this.isConnected() || !this.isCaster() ) return;
@@ -538,7 +543,31 @@ var NicoLiveHelper = {
             }
 
             console.log( keepWins ? '[AutoEnquete] 現在の動画を延長して再投票します' : '[AutoEnquete] 同票または無投票のため再投票します', counts );
-            this._auto_enquete_timer = setTimeout( () => this.runAutoEnqueteRound(), repeatDelay * 1000 );
+
+            // 再投票待機は専用タイマーで管理し、投票終了・動画開始タイマーによる上書きや解除を防ぐ。
+            // Date.now()で期限を保持し、タイマーが早く発火した場合も残り時間を待ってから開始する。
+            clearTimeout( this._auto_enquete_repeat_timer );
+            const repeatDelayMs = repeatDelay * 1000;
+            const repeatDueAt = Date.now() + repeatDelayMs;
+            state.repeatDueAt = repeatDueAt;
+            console.log( `[AutoEnquete] 結果確定後、再投票まで${repeatDelay}秒待機します` );
+            const beginNextRoundWhenDue = () => {
+                if( this._auto_enquete_state !== state ||
+                    !this.currentVideo ||
+                    this.currentVideo.video_id !== state.video_id ){
+                    this._auto_enquete_repeat_timer = null;
+                    return;
+                }
+                const remainingMs = repeatDueAt - Date.now();
+                if( remainingMs > 0 ){
+                    this._auto_enquete_repeat_timer = setTimeout( beginNextRoundWhenDue, remainingMs );
+                    return;
+                }
+                this._auto_enquete_repeat_timer = null;
+                console.log( '[AutoEnquete] 再投票の待機時間が終了しました。次のアンケートを開始します。' );
+                this.runAutoEnqueteRound();
+            };
+            this._auto_enquete_repeat_timer = setTimeout( beginNextRoundWhenDue, repeatDelayMs );
             return;
         }
         this._auto_enquete_state = null;
