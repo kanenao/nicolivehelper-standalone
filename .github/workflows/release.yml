@@ -69,6 +69,15 @@ jobs:
         working-directory: app
         run: npm ci
 
+      - name: Validate JavaScript syntax
+        working-directory: app
+        shell: bash
+        run: |
+          node --check main.js
+          node --check preload.js
+          node --check src/main/main.js
+          node --check src/options/options.js
+
       - name: Determine Release Version
         id: release_info
         shell: bash
