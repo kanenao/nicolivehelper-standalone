@@ -591,7 +591,7 @@ var NicoLiveHelper = {
         const endAt = Number( this.currentVideo.play_end );
         const remainingBeforePoll = Number.isFinite( endAt ) ? endAt - GetCurrentTime() : 0;
         const minimumRemaining = duration + resultDuration + 5;
-        if( remainingBeforePoll <= minimumRemaining ){
+        if( remainingBeforePoll < minimumRemaining ){
             console.log( '[AutoEnquete] 動画残り時間が不足しているため、今回のアンケートを開始しません', {
                 video_id: state.video_id,
                 remainingSeconds: remainingBeforePoll,
@@ -641,6 +641,8 @@ var NicoLiveHelper = {
             const items = await this.enqueteShowResult();
             if( this._auto_enquete_state !== state || state.finalizing ) return;
             if( !items ){
+                state.surveyStarted = false;
+                state.surveyStarted = false;
                 await this.enqueteEnd();
                 if( this._auto_enquete_state === state ){
                     clearTimeout( this._auto_enquete_end_guard_timer );
@@ -660,6 +662,8 @@ var NicoLiveHelper = {
             }
             if( counts['この動画を続ける'] === undefined || counts['次の動画へ'] === undefined ){
                 console.error( '[AutoEnquete] 必要な選択肢が結果にありません:', items );
+                state.surveyStarted = false;
+                state.surveyStarted = false;
                 await this.enqueteEnd();
                 if( this._auto_enquete_state === state ){
                     clearTimeout( this._auto_enquete_end_guard_timer );
