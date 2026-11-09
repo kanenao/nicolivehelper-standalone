@@ -1,7 +1,7 @@
 {
   "name": "nicolivehelper-standalone",
   "productName": "NicoLive Helper Standalone",
-  "version": "0.1.0-beta.30",
+  "version": "0.1.0-beta.31",
   "description": "NicoLive Helper Standalone Desktop Application",
   "main": "main.js",
   "author": "amano / komatti365",
