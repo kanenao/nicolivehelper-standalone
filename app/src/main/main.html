@@ -69,6 +69,10 @@
         if (!api || !api.checkForUpdates) throw new Error('更新確認用 API がありません');
         return api.checkForUpdates();
       }
+      if (id === 'app-update-install') {
+        if (!api || !api.installUpdate) throw new Error('更新適用用 API がありません');
+        return api.installUpdate();
+      }
       if (id === 'close-window') return window.close();
       if (id === 'btn-manual-connect') {
         var input = document.getElementById('input-manual-lvid');
@@ -90,7 +94,7 @@
       if (!control) return;
       var id = control.id || '';
       var accountAction = ['btn-account-login','menu-login','btn-account-relogin'].indexOf(id) >= 0;
-      var mainAction = ['open-settings','open-config-folder','open-about','app-version-badge','menu-reset-all-data','check-for-updates','close-window','btn-manual-connect','btn-play-next','btn-stop-play','btn-resend-info','broadcast-live-refresh'].indexOf(id) >= 0;
+      var mainAction = ['open-settings','open-config-folder','open-about','app-version-badge','menu-reset-all-data','check-for-updates','app-update-install','close-window','btn-manual-connect','btn-play-next','btn-stop-play','btn-resend-info','broadcast-live-refresh'].indexOf(id) >= 0;
       var ready = accountAction ? !!window.__nicoliveHelperAccountUiReady : !!window.__nicoliveHelperMainUiReady;
       if (ready || (!accountAction && !mainAction)) return;
       event.preventDefault();
@@ -288,6 +292,21 @@
     </li>
   </ul>
 </header>
+
+<div id="app-update-banner" class="app-update-banner" hidden role="status" aria-live="polite">
+  <div class="app-update-banner-main">
+    <div class="app-update-banner-text">
+      <strong id="app-update-banner-title">新しいアップデートがあります</strong>
+      <small id="app-update-banner-notes"></small>
+    </div>
+    <div id="app-update-progress-wrap" class="app-update-progress-wrap" hidden>
+      <div class="app-update-progress-track"><div id="app-update-progress-bar" class="app-update-progress-bar"></div></div>
+      <span id="app-update-progress-label">0%</span>
+    </div>
+    <button id="app-update-install" type="button" class="btn btn-sm btn-primary" hidden>再起動して更新</button>
+    <button id="app-update-dismiss" type="button" class="btn btn-sm btn-outline-secondary" title="通知を閉じる" aria-label="通知を閉じる">×</button>
+  </div>
+</div>
 
 <div class="tab-content">
   <div class="tab-pane active" id="tab-live-screen" role="tabpanel">
