@@ -1213,6 +1213,7 @@ var NicoLiveHelper = {
                     return;
                 }
                 this.currentVideo = CopyObject( vinfo );
+                this._broadcastPlayerEndedVideoId = null;
                 if( !is_change_volume ){
                     // 再生成功したら、再生履歴に記録する
                     NicoLiveHistory.addHistory( vinfo );
