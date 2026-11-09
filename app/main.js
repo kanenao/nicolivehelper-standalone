@@ -343,11 +343,11 @@ async function fetchMyCurrentLiveInfo() {
   }
 
   const userId = String(account.user.id);
-  console.log(\`[STSen] Checking active live for user \${userId} (\${account.user.nickname})...\`);
+  console.log(`[STSen] Checking active live for user ${userId} (${account.user.nickname})...`);
 
   const cookies = await session.defaultSession.cookies.get({ domain: 'nicovideo.jp' });
   const targetCookies = (cookies && cookies.length > 0) ? cookies : cachedCookies;
-  const cookieHeader = targetCookies.map(c => \`\${c.name}=\${c.value}\`).join('; ');
+  const cookieHeader = targetCookies.map(c => `${c.name}=${c.value}`).join('; ');
   const headers = {
     'Cookie': cookieHeader,
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -360,7 +360,7 @@ async function fetchMyCurrentLiveInfo() {
   // 番組表・検索に表示されない合言葉付き限定公開番組も所有者の履歴から探す。
   try {
     const historyUrl = 'https://live.nicovideo.jp/front/api/v2/user-broadcast-history' +
-      \`?providerId=\${encodeURIComponent(userId)}&providerType=user&isIncludeNonPublic=true&offset=0&limit=20&withTotalCount=true\`;
+      `?providerId=${encodeURIComponent(userId)}&providerType=user&isIncludeNonPublic=true&offset=0&limit=20&withTotalCount=true`;
     const historyResponse = await fetch(historyUrl, {
       headers,
       signal: AbortSignal.timeout(7000)
@@ -406,7 +406,7 @@ async function fetchMyCurrentLiveInfo() {
 
         if (lvid) {
           latestLvid = lvid;
-          console.log(\`[STSen] Active live found in owner history (including non-public): \${lvid} (status: \${status}) - "\${program.title || ''}"\`);
+          console.log(`[STSen] Active live found in owner history (including non-public): ${lvid} (status: ${status}) - "${program.title || ''}"`);
           return {
             success: true,
             lvid,
@@ -417,7 +417,7 @@ async function fetchMyCurrentLiveInfo() {
         }
       }
     } else {
-      console.warn(\`[STSen] Owner broadcast history returned HTTP \${historyResponse.status}; falling back to user page.\`);
+      console.warn(`[STSen] Owner broadcast history returned HTTP ${historyResponse.status}; falling back to user page.`);
     }
   } catch (err) {
     console.warn('[STSen] Owner broadcast history lookup failed; falling back to user page:', err.message);
@@ -425,7 +425,7 @@ async function fetchMyCurrentLiveInfo() {
 
   // フォールバック: 従来のユーザー放送ページ解析（公開番組・旧形式向け）。
   try {
-    const url = \`https://live.nicovideo.jp/watch/user/\${encodeURIComponent(userId)}\`;
+    const url = `https://live.nicovideo.jp/watch/user/${encodeURIComponent(userId)}`;
     const res = await fetch(url, {
       headers: {
         'Cookie': cookieHeader,
@@ -436,8 +436,8 @@ async function fetchMyCurrentLiveInfo() {
     });
 
     if (!res.ok) {
-      console.warn(\`[STSen] Fetch user live page returned HTTP \${res.status}\`);
-      return { success: false, reason: 'http_error', status: res.status, message: \`ユーザー配信ページの取得に失敗しました (HTTP \${res.status})\` };
+      console.warn(`[STSen] Fetch user live page returned HTTP ${res.status}`);
+      return { success: false, reason: 'http_error', status: res.status, message: `ユーザー配信ページの取得に失敗しました (HTTP ${res.status})` };
     }
 
     const html = await res.text();
@@ -457,7 +457,7 @@ async function fetchMyCurrentLiveInfo() {
             if (matchLv) lvid = matchLv[0];
           }
           if (lvid) {
-            console.log(\`[STSen] Active live detected from user page: \${lvid} (status: \${status}) - "\${prog.title}"\`);
+            console.log(`[STSen] Active live detected from user page: ${lvid} (status: ${status}) - "${prog.title}"`);
             latestLvid = lvid;
             liveProp[lvid] = liveinfo;
             liveProp[lvid.replace(/^lv/, '')] = liveinfo;
@@ -491,7 +491,7 @@ function startLiveAutoDetectMonitor(intervalMs = 10000) {
         clearInterval(liveAutoDetectTimer);
         liveAutoDetectTimer = null;
         latestLvid = detected.lvid;
-        console.log(\`[STSen] Background auto-detect found a live: \${detected.lvid}; connecting.\`);
+        console.log(`[STSen] Background auto-detect found a live: ${detected.lvid}; connecting.`);
         createOrFocusMainWindow(detected.lvid);
       }
     } catch (error) {
@@ -500,7 +500,7 @@ function startLiveAutoDetectMonitor(intervalMs = 10000) {
       liveAutoDetectInProgress = false;
     }
   }, intervalMs);
-  console.log(\`[STSen] Background live detection monitor started (\${intervalMs}ms interval).\`);
+  console.log(`[STSen] Background live detection monitor started (${intervalMs}ms interval).`);
 }
 
 // -------------------------------------------------------------
