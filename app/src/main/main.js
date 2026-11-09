@@ -2932,7 +2932,6 @@ var NicoLiveHelper = {
             updateAccountUI();
             initRemoteClientUI();
             window.__nicoliveHelperAccountUiReady = true;
-            if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('アカウント操作のイベント登録完了');
         }
     },
 
@@ -3275,7 +3274,6 @@ var NicoLiveHelper = {
             }
         } );
         window.__nicoliveHelperMainUiReady = true;
-        if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('メイン操作のイベント登録完了');
     },
 
     /**
@@ -3471,7 +3469,6 @@ var NicoLiveHelper = {
         }
 
         window.__nicoliveHelperInitCompleted = true;
-        if (window.__nicoliveHelperDiag) window.__nicoliveHelperDiag('起動処理が最後まで完了しました');
 
         if( !this.isCaster() ){
             // 視聴者のときの再生履歴取得
