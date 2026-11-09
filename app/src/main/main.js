@@ -201,28 +201,60 @@ var NicoLiveHelper = {
         const view = document.getElementById('broadcast-live-webview');
         if(!view || !view.executeJavaScript || view.isLoading()) return;
         try{
-            await view.executeJavaScript(`(() => {
-                if (window.__nicoliveHelperPlaybackSyncInstalled) return true;
-                window.__nicoliveHelperPlaybackSyncInstalled = true;
-                window.__nicoliveHelperPlaybackSync = null;
-                window.addEventListener('message', (event) => {
-                    if (event.origin !== 'https://embed.nicovideo.jp') return;
-                    const payload = event.data;
-                    if (!payload || !payload.playerId) return;
-                    if (payload.eventName === 'playerStatusChange' && payload.data && Number(payload.data.playerStatus) === 4) {
-                        window.__nicoliveHelperPlaybackSync = Object.assign({}, window.__nicoliveHelperPlaybackSync || {}, {
-                            ended: true, playerId: payload.playerId, receivedAt: Date.now()
-                        });
-                        return;
-                    }
-                    if (payload.eventName !== 'playerMetadataChange' || !payload.data) return;
-                    const currentTime = Number(payload.data.currentTime);
-                    const duration = Number(payload.data.duration);
-                    if (!Number.isFinite(currentTime) || !Number.isFinite(duration) || duration <= 0 || currentTime < 0) return;
-                    window.__nicoliveHelperPlaybackSync = { currentTime, duration, playerId: payload.playerId, receivedAt: Date.now(), ended: false };
-                }, false);
-                return true;
-            })()`);
+            const injected = [
+                '(function(){',
+                'const collectPlayers = function(){',
+                ' const frames=[]; const visited=new Set();',
+                ' const scan=function(root){',
+                '  if(!root || visited.has(root) || !root.querySelectorAll) return;',
+                '  visited.add(root);',
+                '  root.querySelectorAll("iframe").forEach(function(frame){frames.push(frame);});',
+                '  root.querySelectorAll("*").forEach(function(element){if(element.shadowRoot) scan(element.shadowRoot);});',
+                ' }; scan(document); return frames;',
+                '};',
+                'window.__nicoliveHelperFindEmbedPlayer = function(){',
+                ' return collectPlayers().find(function(frame){',
+                '  try{return new URL(frame.src || frame.getAttribute("src"),location.href).hostname.toLowerCase()==="embed.nicovideo.jp";}',
+                '  catch(e){return false;}',
+                ' }) || null;',
+                '};',
+                'if(!window.__nicoliveHelperPlaybackSyncInstalled){',
+                ' window.__nicoliveHelperPlaybackSyncInstalled=true;',
+                ' window.__nicoliveHelperPlaybackSync={};',
+                ' window.addEventListener("message",function(event){',
+                '  if(event.origin!=="https://embed.nicovideo.jp") return;',
+                '  let payload=event.data;',
+                '  if(typeof payload==="string"){try{payload=JSON.parse(payload);}catch(e){return;}}',
+                '  if(!payload || typeof payload!=="object") return;',
+                '  if(payload.data && payload.data.eventName && !payload.eventName) payload=payload.data;',
+                '  if(!payload.playerId || !payload.eventName) return;',
+                '  const previous=window.__nicoliveHelperPlaybackSync || {};',
+                '  if(payload.eventName==="playerMetadataChange" && payload.data){',
+                '   const currentTime=Number(payload.data.currentTime), duration=Number(payload.data.duration);',
+                '   if(!Number.isFinite(currentTime)||!Number.isFinite(duration)||duration<=0||currentTime<0) return;',
+                '   window.__nicoliveHelperPlaybackSync=Object.assign({},previous,{currentTime:currentTime,duration:duration,playerId:payload.playerId,receivedAt:Date.now(),ended:false});',
+                '  }else if(payload.eventName==="playerStatusChange" && payload.data){',
+                '   const playerStatus=Number(payload.data.playerStatus);',
+                '   window.__nicoliveHelperPlaybackSync=Object.assign({},previous,{playerStatus:playerStatus,playerId:payload.playerId,receivedAt:Date.now(),ended:playerStatus===4});',
+                '  }',
+                ' },false);',
+                '}',
+                'const player=window.__nicoliveHelperFindEmbedPlayer();',
+                'if(!player) return {playerFound:false};',
+                'let url; try{url=new URL(player.src || player.getAttribute("src"),location.href);}catch(e){return {playerFound:true};}',
+                'let playerId=url.searchParams.get("playerId"), reloading=false;',
+                'if(url.searchParams.get("jsapi")!=="1" || !playerId){',
+                ' playerId=playerId || "nicolivehelper-broadcast";',
+                ' url.searchParams.set("jsapi","1"); url.searchParams.set("playerId",playerId);',
+                ' const nextSrc=url.toString();',
+                ' if(player.src!==nextSrc){player.src=nextSrc;reloading=true;}',
+                '}',
+                'window.__nicoliveHelperPlaybackSync=Object.assign({},window.__nicoliveHelperPlaybackSync || {},{playerId:playerId,playerFound:true,apiEnabled:true,reloading:reloading});',
+                'return {playerFound:true,playerId:playerId,reloading:reloading};',
+                '})();'
+            ].join("\n");
+            const result = await view.executeJavaScript(injected);
+            if(result && result.reloading) console.log('[PlaybackSync] 埋め込みプレーヤーに操作APIを設定しました');
         }catch(e){ console.warn('[PlaybackSync] Player event listener setup failed:',e); }
     },
 
@@ -231,7 +263,18 @@ var NicoLiveHelper = {
         if(!view || !view.executeJavaScript || view.isLoading() || this._broadcastMediaPollBusy) return;
         this._broadcastMediaPollBusy = true;
         try{
-            const sample = await view.executeJavaScript('window.__nicoliveHelperPlaybackSync || null');
+            const script = [
+                '(function(){',
+                ' const player=window.__nicoliveHelperFindEmbedPlayer ? window.__nicoliveHelperFindEmbedPlayer() : null;',
+                ' let playerId=null;',
+                ' if(player){try{playerId=new URL(player.src || player.getAttribute("src"),location.href).searchParams.get("playerId");}catch(e){}}',
+                ' return Object.assign({},window.__nicoliveHelperPlaybackSync || {},playerId ? {playerId:playerId,playerFound:true} : {});',
+                '})()'
+            ].join("\n");
+            const sample = await view.executeJavaScript(script);
+            if(sample && sample.playerId){
+                this._broadcastMediaSync = Object.assign({}, this._broadcastMediaSync || {}, {playerId:sample.playerId});
+            }
             if(sample && Number.isFinite(Number(sample.receivedAt)) && Date.now() - Number(sample.receivedAt) < 3000){
                 if(sample.ended){
                     const wasEnded = this._broadcastMediaSync && this._broadcastMediaSync.ended;
@@ -240,10 +283,11 @@ var NicoLiveHelper = {
                     });
                     if(!wasEnded) this.handleBroadcastPlayerEnded();
                 }else if(Number.isFinite(Number(sample.currentTime)) && Number.isFinite(Number(sample.duration))){
-                    this._broadcastMediaSync = {
+                    this._broadcastMediaSync = Object.assign({}, this._broadcastMediaSync || {}, {
                         currentTime: Number(sample.currentTime), duration: Number(sample.duration),
-                        playerId: sample.playerId, receivedAt: Number(sample.receivedAt), ended: false
-                    };
+                        playerId: sample.playerId || (this._broadcastMediaSync && this._broadcastMediaSync.playerId),
+                        receivedAt: Number(sample.receivedAt), ended: false
+                    });
                 }
             }
         }catch(e){ /* 放送画面の遷移中・破棄中は次回ポーリングで再試行 */ }
@@ -252,25 +296,36 @@ var NicoLiveHelper = {
 
     sendBroadcastPlayerCommand: async function(eventName, data){
         const view = document.getElementById('broadcast-live-webview');
-        const sync = this._broadcastMediaSync;
-        if(!view || !view.executeJavaScript || !sync || !sync.playerId) {
-            this.showAlert('ニコ動プレーヤーとの接続を確認してください');
+        if(!view || !view.executeJavaScript || view.isLoading()){
+            this.showAlert('放送画面を読み込んでから操作してください');
             return false;
         }
-        const payload = JSON.stringify({eventName, data: data || {}, playerId: sync.playerId, sourceConnectorType: 1});
         try{
-            const result = await view.executeJavaScript(`(() => {
-                const message = ${payload};
-                const player = Array.from(document.querySelectorAll('iframe')).find(frame => {
-                    try { return new URL(frame.src).hostname === 'embed.nicovideo.jp'; }
-                    catch(e) { return false; }
-                });
-                if(!player || !player.contentWindow) return false;
-                player.contentWindow.postMessage(message, 'https://embed.nicovideo.jp');
-                return true;
-            })()`);
-            if(!result) this.showAlert('ニコ動プレーヤーが見つかりません');
-            return !!result;
+            const script = [
+                '(function(){',
+                ' const player=window.__nicoliveHelperFindEmbedPlayer ? window.__nicoliveHelperFindEmbedPlayer() : null;',
+                ' if(!player || !player.contentWindow) return {ok:false,reason:"player-not-found"};',
+                ' let url; try{url=new URL(player.src || player.getAttribute("src"),location.href);}catch(e){return {ok:false,reason:"invalid-url"};}',
+                ' let playerId=url.searchParams.get("playerId") || (window.__nicoliveHelperPlaybackSync && window.__nicoliveHelperPlaybackSync.playerId) || "nicolivehelper-broadcast";',
+                ' const message={eventName:' + JSON.stringify(eventName) + ',data:' + JSON.stringify(data || {}) + ',playerId:playerId,sourceConnectorType:1};',
+                ' const send=function(){try{player.contentWindow.postMessage(message,"https://embed.nicovideo.jp");return true;}catch(e){return false;}};',
+                ' if(url.searchParams.get("jsapi")!=="1" || !url.searchParams.get("playerId")){',
+                '  url.searchParams.set("jsapi","1");url.searchParams.set("playerId",playerId);',
+                '  player.addEventListener("load",send,{once:true});player.src=url.toString();return {ok:true,reloading:true};',
+                ' }',
+                ' return {ok:send()};',
+                '})()'
+            ].join("\n");
+            const result = await view.executeJavaScript(script);
+            if(!result || !result.ok){
+                const message = result && result.reason === 'player-not-found'
+                    ? 'ニコ生の埋め込みプレーヤーが見つかりません。放送画面を更新して再試行してください'
+                    : 'ニコ動プレーヤーへ操作を送信できませんでした';
+                this.showAlert(message);
+                return false;
+            }
+            if(result.reloading) this.showAlert('プレーヤー操作を有効化しています。少し待ってから再操作してください');
+            return true;
         }catch(e){
             console.warn('[PlaybackControl] command failed:', e);
             this.showAlert('プレーヤー操作に失敗しました');
@@ -294,12 +349,25 @@ var NicoLiveHelper = {
             this._video_completion_announced_id = videoId;
             this.postCasterComment('この動画が完走しました！', '', '', false);
         }
-        this.setNextPlayTimer(0);
+        clearTimeout(this._autoplay_timer);
+        this._autoplay_timer = null;
+        if(this.getPlayStyle() !== 0) this.playNext();
+        else this.setAutoplayIndicator(false);
+    },
+
+    getRemainingMediaSeconds: function(){
+        if(!this.currentVideo) return 0;
+        const synced = this.getSynchronizedPlaybackPosition();
+        const total = synced ? synced.duration : Math.max(0, Number(this.currentVideo.length_ms || 0) / 1000);
+        const elapsed = synced ? synced.currentTime :
+            Math.max(0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()));
+        return Math.max(0, total - elapsed);
     },
 
     getSynchronizedPlaybackPosition: function(){
         if(!this.currentVideo || !this._broadcastMediaSync) return null;
         const sync = this._broadcastMediaSync;
+        if(!Number.isFinite(Number(sync.currentTime)) || !Number.isFinite(Number(sync.duration))) return null;
         if(Date.now() - sync.receivedAt > 3000) return null;
         const expected = Number(this.currentVideo.length_ms || 0) / 1000;
         if(expected <= 0 || sync.duration <= 0) return null;
@@ -389,6 +457,11 @@ var NicoLiveHelper = {
         const state=document.getElementById('broadcast-player-state');
         const view=document.getElementById('broadcast-live-webview');
         if(refresh && !refresh.dataset.bound){refresh.dataset.bound='1';refresh.addEventListener('click',()=>this.refreshBroadcastLivePage());}
+        const nextButton = document.getElementById('broadcast-player-next');
+        if(nextButton && !nextButton.dataset.bound){
+            nextButton.dataset.bound='1';
+            nextButton.addEventListener('click',()=>this.playNextNow());
+        }
         const bindButton = (id, eventName) => {
             const button = document.getElementById(id);
             if(button && !button.dataset.bound){
@@ -515,7 +588,11 @@ var NicoLiveHelper = {
         this.scheduleVideoCompletionAnnouncement( videoId );
         const endAt = Number( this.currentVideo.play_end ) || GetCurrentTime();
         const remaining = Math.max( 0, endAt - GetCurrentTime() );
-        this.setNextPlayTimer( Math.max( 1, Math.ceil( remaining ) + 2 ) );
+        // 実際の動画尺を超えて終了タイマーを延ばさない。
+        const mediaRemaining = this.getRemainingMediaSeconds();
+        const effectiveRemaining = Math.min(remaining, mediaRemaining);
+        this.currentVideo.play_end = GetCurrentTime() + effectiveRemaining;
+        this.setNextPlayTimer( Math.max( 0, Math.ceil( effectiveRemaining ) ) );
 
         // POSTが完了して投票が開始済みの場合、ニコ生側のアンケートも終了する。
         if( state.surveyStarted ){
@@ -683,8 +760,11 @@ var NicoLiveHelper = {
         const resultDuration = Number.isFinite(resultValue) ? Math.max( 0, resultValue ) : 15;
         const requiredBeforeStart = pollDuration + resultDuration + 5;
         const minimumVideoLength = startDelay + requiredBeforeStart;
-        const elapsed = Math.max( 0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()) );
-        const remainingVideoSeconds = totalSeconds - elapsed;
+        const syncedPosition = this.getSynchronizedPlaybackPosition();
+        const elapsed = syncedPosition ? syncedPosition.currentTime :
+            Math.max( 0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()) );
+        const actualTotalSeconds = syncedPosition ? syncedPosition.duration : totalSeconds;
+        const remainingVideoSeconds = Math.max( 0, actualTotalSeconds - elapsed );
 
         // 動画全体の長さからアンケート実施可否を自動判定する。
         // 開始待ち + 投票 + 結果表示 + 5秒の余裕が取れない短い動画はアンケートを省略する。
@@ -738,7 +818,8 @@ var NicoLiveHelper = {
         const resultValue = parseInt( Config['auto-enquete-result-display-duration'] );
         const resultDuration = Number.isFinite( resultValue ) ? Math.max( 0, resultValue ) : 15;
         const endAt = Number( this.currentVideo.play_end );
-        const remainingBeforePoll = Number.isFinite( endAt ) ? endAt - GetCurrentTime() : 0;
+        const scheduledRemaining = Number.isFinite( endAt ) ? endAt - GetCurrentTime() : 0;
+        const remainingBeforePoll = Math.min(Math.max(0, scheduledRemaining), this.getRemainingMediaSeconds());
         const minimumRemaining = duration + resultDuration + 5;
         if( remainingBeforePoll < minimumRemaining ){
             console.log( '[AutoEnquete] 動画残り時間が不足しているため、今回のアンケートを開始しません', {
@@ -836,10 +917,11 @@ var NicoLiveHelper = {
         this._auto_enquete_end_guard_timer = null;
         const now = GetCurrentTime();
         const end = Number(this.currentVideo.play_end) || now;
-        const remaining = Math.max( 1, end - now );
+        const remaining = Math.min(Math.max(0, end - now), this.getRemainingMediaSeconds());
+        this.currentVideo.play_end = now + remaining;
         this.scheduleVideoCompletionAnnouncement( videoId || this.currentVideo.video_id );
         this.setNextPlayTimer( remaining );
-        console.log( `[AutoEnquete] 元の動画終了予定に自動再生タイマーを復帰します（残り${remaining}秒）` );
+        console.log( `[AutoEnquete] 動画の実残り時間に合わせて自動再生タイマーを復帰します（残り${remaining}秒）` );
     },
 
     // API結果・運営コメント結果のどちらでも、同じ結果表示時間を経てから判定する。
@@ -910,27 +992,41 @@ var NicoLiveHelper = {
             const resultDuration = Number.isFinite( resultDurationValue ) ? Math.max( 0, resultDurationValue ) : 15;
             const totalVotes = keep + skip;
             const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
-            const safetyMargin = Math.max( 5, Math.round( repeatDelay * keepRatio ) );
-            // 動画終了予定には再投票の待機・投票・結果表示時間も必要。
-            // 視聴者向けの延長告知では、アンケート進行時間を除いた動画側の追加余裕だけを知らせる。
-            const videoOnlyExtension = safetyMargin;
-            const surveyFlowExtension = repeatDelay + pollDuration + resultDuration;
-            const extension = surveyFlowExtension + videoOnlyExtension;
-
-            // 重要: アンケート終了APIの応答を待つ前に終了予定を延長する。
-            // API通信中に元の自動再生タイマーが満了して延長対象を失う問題を防ぐ。
+            const safetyMargin = 5;
             const now = GetCurrentTime();
-            const currentEnd = Number(this.currentVideo.play_end) || now;
-            this.currentVideo.play_end = Math.max( currentEnd, now ) + extension;
-            this._auto_enquete_extension_video_id = state.video_id;
-            this._auto_enquete_extension_total = (Number(this._auto_enquete_extension_total) || 0) + extension;
-            this._auto_enquete_extension_end_at = this.currentVideo.play_end;
-            this.setAutoEnqueteExtensionIndicator( extension, this._auto_enquete_extension_total );
-            this.announceAutoEnqueteExtension( videoOnlyExtension );
-            this.scheduleVideoCompletionAnnouncement( state.video_id );
+            const mediaRemaining = this.getRemainingMediaSeconds();
+            const minimumNextRound = pollDuration + resultDuration + safetyMargin;
+            if(mediaRemaining < minimumNextRound){
+                console.log('[AutoEnquete] 動画の残り尺が足りないため、延長・再投票を行わず自然終了に合わせます', {
+                    video_id: state.video_id, mediaRemaining, requiredSeconds: minimumNextRound
+                });
+                await this.enqueteEnd();
+                if(this._auto_enquete_state === state){
+                    state.surveyStarted = false;
+                    this._auto_enquete_state = null;
+                    clearTimeout(this._auto_enquete_end_guard_timer);
+                    this._auto_enquete_end_guard_timer = null;
+                    this.setEnqueteIndicator(false);
+                    this.setAutoEnqueteExtensionIndicator(0, 0);
+                    this.resumeAutoPlayAfterEnquete(state.video_id);
+                    this.showAlert('動画の残り時間が短いため再投票を省略します。動画終了時に次の動画へ進みます。');
+                }
+                return;
+            }
 
-            const remaining = Math.max( 1, this.currentVideo.play_end - now );
-            this.setNextPlayTimer( remaining );
+            // 再投票待機は動画の残り尺に合わせて短縮する。動画の実尺を超える延長を作らず、黒画面の待ち時間を防ぐ。
+            const maxRepeatDelay = Math.max(0, mediaRemaining - minimumNextRound);
+            const adjustedRepeatDelay = Math.min(repeatDelay, maxRepeatDelay);
+            const currentEnd = Number(this.currentVideo.play_end) || now + mediaRemaining;
+            this.currentVideo.play_end = Math.min(currentEnd, now + mediaRemaining);
+            this._auto_enquete_extension_video_id = state.video_id;
+            this._auto_enquete_extension_total = 0;
+            this._auto_enquete_extension_end_at = null;
+            this.setAutoEnqueteExtensionIndicator(0, 0);
+            this.scheduleVideoCompletionAnnouncement(state.video_id);
+
+            const remaining = Math.max(0, this.currentVideo.play_end - now);
+            this.setNextPlayTimer(remaining);
             this.saveActivePlaySession({
                 live_id: this.getLiveId(),
                 video_id: this.currentVideo.video_id,
@@ -938,12 +1034,17 @@ var NicoLiveHelper = {
                 length_ms: this.currentVideo.length_ms,
                 play_begin: this.currentVideo.play_begin,
                 play_end: this.currentVideo.play_end,
-                auto_enquete_extension_total: this._auto_enquete_extension_total,
-                auto_enquete_extension_end_at: this._auto_enquete_extension_end_at
+                auto_enquete_extension_total: 0,
+                auto_enquete_extension_end_at: null
             });
             this.updateBroadcastDashboard();
             const extensionReason = keepWins ? `継続票比率 ${Math.round(keepRatio * 100)}%` : (noVotes ? '無投票' : '同票');
-            console.log( `[AutoEnquete] ${extensionReason}: ${extension}秒延長（待機${repeatDelay}秒 + 次回投票${pollDuration}秒 + 結果表示${resultDuration}秒 + 安全余裕${safetyMargin}秒）。再投票待機を開始します`, counts );
+            if(adjustedRepeatDelay < repeatDelay){
+                console.log(`[AutoEnquete] ${extensionReason}: 動画残り尺に合わせ再投票待機を${repeatDelay}秒から${adjustedRepeatDelay}秒へ短縮します`, counts);
+                this.postCasterComment(`動画の残り時間に合わせ、次回アンケートまでの待機を${adjustedRepeatDelay}秒に短縮しました。`, '', '', false);
+            }else{
+                console.log(`[AutoEnquete] ${extensionReason}: 再投票待機${adjustedRepeatDelay}秒。動画終了予定は実際の尺に合わせて維持します`, counts);
+            }
 
             await this.enqueteEnd();
             state.surveyStarted = false;
@@ -951,7 +1052,7 @@ var NicoLiveHelper = {
 
             // 延長タイマーを先に設定した後で、結果確定から指定秒数だけ次回投票を待つ。
             clearTimeout( this._auto_enquete_repeat_timer );
-            const repeatDelayMs = repeatDelay * 1000;
+            const repeatDelayMs = adjustedRepeatDelay * 1000;
             const repeatDueAt = Date.now() + repeatDelayMs;
             state.repeatDueAt = repeatDueAt;
             this.updateBroadcastDashboard();
@@ -1088,6 +1189,7 @@ var NicoLiveHelper = {
             let url = `${this.endpointUrl}/v1/tools/live/contents/${this.getLiveId()}/quotation`;
             let xhr = CreateXHR( 'DELETE', url );
             let video_id = this.currentVideo.video_id;
+            this._quotationActive = false;
             // Referer付かないけど大丈夫みたい
             xhr.onreadystatechange = () => {
                 if( xhr.readyState != 4 ) return;
@@ -1167,8 +1269,14 @@ var NicoLiveHelper = {
      * @returns {Promise<any>}
      */
     playVideo: async function( vinfo, is_change_volume ){
-        // 現在再生中の動画を取得
-        let current = await HttpGet( `${this.endpointUrl}/v1/tools/live/contents/${this.getLiveId()}/quotation` );
+        // 再生枠がすでに存在する場合は状態確認APIを省略し、次動画への切替を高速化する。
+        let current;
+        if(this._quotationActive === true){
+            current = {status:200};
+        }else{
+            current = await HttpGet( `${this.endpointUrl}/v1/tools/live/contents/${this.getLiveId()}/quotation` );
+            this._quotationActive = current.status !== 404;
+        }
 
         // 次動画の再生したあとに音量変更が走ると困るのでタイマーを取り消す
         clearTimeout( this._change_volume_timer );
@@ -1213,6 +1321,7 @@ var NicoLiveHelper = {
                     return;
                 }
                 this.currentVideo = CopyObject( vinfo );
+                this._quotationActive = true;
                 this._broadcastPlayerEndedVideoId = null;
                 if( !is_change_volume ){
                     // 再生成功したら、再生履歴に記録する
@@ -1289,14 +1398,46 @@ var NicoLiveHelper = {
         if( this._lock ){
             console.log( '次の動画の再生処理中です' );
             this.showAlert( '次の動画の再生待機中です' );
-            return;
+            return false;
         }
         this._lock = true;
+        let result = false;
         try{
-            await this._playNext();
+            result = await this._playNext();
         }catch( e ){
+            console.error('[Autoplay] 次動画の再生に失敗しました:', e);
+        }finally{
+            this._lock = false;
         }
-        this._lock = false;
+        return !!result;
+    },
+
+    playNextNow: async function(){
+        if(!this.isConnected() || !this.isCaster()){
+            this.showAlert('次の動画への切り替えは配信主として接続している場合に利用できます');
+            return false;
+        }
+        const hasRequest = NicoLiveRequest.request.some(item => !item.no_live_play);
+        const hasStock = NicoLiveStock.stock.some(item => !item.no_live_play && !item.is_played);
+        if(!hasRequest && !hasStock){
+            this.showAlert('次に再生できるリクエスト・ストックがありません');
+            return false;
+        }
+        if(this._lock){
+            this.showAlert('次の動画の再生処理中です');
+            return false;
+        }
+        const currentVideoId = this.currentVideo && this.currentVideo.video_id;
+        const state = this._auto_enquete_state;
+        clearTimeout(this._autoplay_timer);
+        this._autoplay_timer = null;
+        this.clearAutoEnqueteTimers();
+        if(state && state.surveyStarted) this.enqueteEnd();
+        const played = await this.playNext();
+        if(!played && currentVideoId && this.currentVideo && this.currentVideo.video_id === currentVideoId){
+            this.resumeAutoPlayAfterEnquete(currentVideoId);
+        }
+        return played;
     },
 
     _playNext: async function(){
@@ -1328,8 +1469,7 @@ var NicoLiveHelper = {
                     if( vinfo.length_ms > remain ) continue;
                 }
                 let result = await NicoLiveRequest.playVideo( ridx[i] );
-                if( result ) return;
-                await Wait( 2500 );
+                if( result ) return true;
             }
         }
         for( let i = 0; i < sidx.length; i++ ){
@@ -1340,13 +1480,13 @@ var NicoLiveHelper = {
                     if( vinfo.length_ms > remain ) continue;
                 }
                 let result = await NicoLiveStock.playVideo( sidx[i] );
-                if( result ) return;
-                await Wait( 2500 );
+                if( result ) return true;
             }
         }
 
         this.showAlert( `再生できる動画がありませんでした` );
         this.setAutoplayIndicator( false );
+        return false;
     },
 
     /**
@@ -1356,6 +1496,7 @@ var NicoLiveHelper = {
      */
     getCurrentVideo: async function(){
         let current = await HttpGet( `https://services-eapi.spi.nicovideo.jp/v1/tools/live/contents/${this.getLiveId()}/quotation` );
+        this._quotationActive = current.status !== 404;
         if( current.status !== 404 ){
             let contents = JSON.parse( current.responseText );
             console.log( contents );
@@ -1386,6 +1527,7 @@ var NicoLiveHelper = {
         try{
             let current = await HttpGet( `${this.endpointUrl}/v1/tools/live/contents/${this.getLiveId()}/quotation` );
             console.log( 'autoStartQuote: current quote status', current );
+            this._quotationActive = current.status !== 404;
             if( current.status !== 404 ){
                 // 500などのサーバーエラーの場合は再試行をスキップ
                 if( current.status >= 500 ){
@@ -1423,6 +1565,7 @@ var NicoLiveHelper = {
 
         let vinfo = await this.getVideoInfo( video_id );
         this.currentVideo = vinfo;
+        this._quotationActive = true;
 
         let now = GetCurrentTime();
         let session = this.getActivePlaySession();
@@ -1431,15 +1574,16 @@ var NicoLiveHelper = {
         if( session && session.live_id === this.getLiveId() && session.video_id === video_id && now < session.play_end ){
             console.log( '[STSen] Restored active play session from storage:', session );
             this.currentVideo.play_begin = session.play_begin;
-            this.currentVideo.play_end = session.play_end;
+            const naturalEnd = Number(session.play_begin) + Math.max(0, Number(vinfo.length_ms || 0) / 1000);
+            this.currentVideo.play_end = Math.min(Number(session.play_end) || naturalEnd, naturalEnd);
             this._auto_enquete_extension_video_id = video_id;
-            this._auto_enquete_extension_total = Math.max( 0, Math.floor( Number(session.auto_enquete_extension_total) || 0 ) );
-            this._auto_enquete_extension_end_at = Number(session.auto_enquete_extension_end_at || (this._auto_enquete_extension_total > 0 ? session.play_end : 0)) || null;
-            this.setAutoEnqueteExtensionIndicator( 0, this._auto_enquete_extension_total );
+            this._auto_enquete_extension_total = 0;
+            this._auto_enquete_extension_end_at = null;
+            this.setAutoEnqueteExtensionIndicator( 0, 0 );
 
-            // 残り時間に合わせて次の動画の自動再生タイマーを再スケジュール
-            let remainingSec = session.play_end - now;
-            let next = parseInt( remainingSec + (Config['autoplay-interval'] || 10) );
+            // 旧バージョンの保存セッションに残った過剰な延長時間を復元しない。
+            let remainingSec = Math.max(0, this.currentVideo.play_end - now);
+            let next = parseInt( remainingSec + (Number(Config['autoplay-interval']) || 0) );
             if( next > 0 ){
                 this.setNextPlayTimer( next );
             }
