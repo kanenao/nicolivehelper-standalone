@@ -315,7 +315,8 @@
         <div class="broadcast-live-pane-title">放送映像 <button id="broadcast-live-refresh" type="button" class="btn btn-sm btn-outline-light float-right">↻ 更新</button></div>
         <webview id="broadcast-live-webview" src="about:blank" allowpopups></webview>
         <div id="broadcast-player-controls">
-          <div id="broadcast-player-title">再生中の動画はありません</div><div class="broadcast-player-timeline"><span id="broadcast-player-current">00:00</span><input id="broadcast-player-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="再生位置"><span id="broadcast-player-duration">--:--</span></div>
+          <div id="broadcast-player-title">再生中の動画はありません</div><div class="broadcast-player-timeline"><span id="broadcast-player-current">00:00</span><input id="broadcast-player-seek" type="range" min="0" max="1" value="0" step="1" aria-label="再生位置"><span id="broadcast-player-duration">--:--</span></div>
+          <div id="broadcast-player-actions"><button id="broadcast-player-back" type="button" class="btn btn-sm btn-outline-secondary">↶ 10秒</button><button id="broadcast-player-play" type="button" class="btn btn-sm btn-outline-primary">▶ 再生</button><button id="broadcast-player-pause" type="button" class="btn btn-sm btn-outline-primary">Ⅱ 一時停止</button><button id="broadcast-player-forward" type="button" class="btn btn-sm btn-outline-secondary">10秒 ↷</button></div>
           <div class="broadcast-player-status-row">
             <strong id="broadcast-player-extension-countdown" hidden></strong>
             <strong id="broadcast-player-repeat-countdown" hidden></strong>
