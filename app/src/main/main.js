@@ -3153,35 +3153,89 @@ var NicoLiveHelper = {
 
     initUI: async function(){
         const updateLabel = document.getElementById('app-update-status');
+        const updateBanner = document.getElementById('app-update-banner');
+        const updateTitle = document.getElementById('app-update-banner-title');
+        const updateNotes = document.getElementById('app-update-banner-notes');
+        const progressWrap = document.getElementById('app-update-progress-wrap');
+        const progressBar = document.getElementById('app-update-progress-bar');
+        const progressLabel = document.getElementById('app-update-progress-label');
+        const installButton = document.getElementById('app-update-install');
+        const dismissButton = document.getElementById('app-update-dismiss');
+        let updateBannerDismissed = false;
+
+        const formatReleaseNotes = (notes) => {
+            if (typeof notes === 'string') return notes.trim().slice(0, 1200);
+            if (Array.isArray(notes)) {
+                return notes.map(item => {
+                    if (typeof item === 'string') return item;
+                    if (item && typeof item.note === 'string') return item.note;
+                    return '';
+                }).filter(Boolean).join('\n').slice(0, 1200);
+            }
+            return '';
+        };
+
+        const showUpdateBanner = (title, notes) => {
+            if (!updateBanner || updateBannerDismissed) return;
+            if (updateTitle) updateTitle.textContent = title || '新しいアップデートがあります';
+            if (updateNotes) updateNotes.textContent = notes || '';
+            updateBanner.hidden = false;
+        };
+
         const renderUpdateStatus = (info) => {
-            if (!updateLabel || !info) return;
+            if (!info) return;
             const version = info.version ? ' v' + info.version : '';
+            const releaseNotes = formatReleaseNotes(info.releaseNotes || info.releaseName || '');
             switch (info.status) {
             case 'checking':
-                updateLabel.textContent = '更新を確認しています…';
+                if (updateLabel) updateLabel.textContent = '更新を確認しています…';
                 break;
             case 'available':
-                updateLabel.textContent = version + ' をダウンロードしています…';
+                updateBannerDismissed = false;
+                if (updateLabel) updateLabel.textContent = version + ' をダウンロードしています…';
+                if (progressWrap) progressWrap.hidden = true;
+                if (installButton) installButton.hidden = true;
+                showUpdateBanner('新しいバージョン' + version + 'が見つかりました。ダウンロードしています。', releaseNotes);
                 break;
-            case 'downloading':
-                updateLabel.textContent = '更新をダウンロード中 ' + (info.percent || 0) + '%';
+            case 'downloading': {
+                const percent = Math.max(0, Math.min(100, Math.round(Number(info.percent) || 0)));
+                if (updateLabel) updateLabel.textContent = '更新をダウンロード中 ' + percent + '%';
+                if (progressWrap) progressWrap.hidden = false;
+                if (progressBar) progressBar.style.width = percent + '%';
+                if (progressLabel) progressLabel.textContent = percent + '%';
+                showUpdateBanner('新しいバージョン' + version + 'をダウンロード中です。', releaseNotes);
                 break;
+            }
             case 'downloaded':
-                updateLabel.textContent = version + ' の更新準備が完了しました（終了時に適用）';
+                if (updateLabel) updateLabel.textContent = version + ' の更新準備が完了しました';
+                if (progressWrap) progressWrap.hidden = true;
+                if (installButton) {
+                    installButton.hidden = false;
+                    installButton.disabled = false;
+                    installButton.textContent = '再起動して更新';
+                }
+                showUpdateBanner(version + ' の更新をダウンロードしました。再起動すると新しいバージョンが適用されます。', releaseNotes);
                 break;
             case 'not-available':
-                updateLabel.textContent = '最新バージョンです' + (info.version ? '（v' + info.version + '）' : '');
+                if (updateLabel) updateLabel.textContent = '最新バージョンです' + (info.version ? '（v' + info.version + '）' : '');
+                if (updateBanner) updateBanner.hidden = true;
                 break;
             case 'unsupported':
-                updateLabel.textContent = info.message || 'インストーラー版で利用できます';
+                if (updateLabel) updateLabel.textContent = info.message || 'インストーラー版で利用できます';
+                if (updateBanner) updateBanner.hidden = true;
                 break;
             case 'error':
-                updateLabel.textContent = '更新確認エラー: ' + (info.message || '詳細はログを確認してください');
+                if (updateLabel) updateLabel.textContent = '更新確認エラー: ' + (info.message || '詳細はログを確認してください');
+                updateBannerDismissed = false;
+                if (progressWrap) progressWrap.hidden = true;
+                if (installButton) installButton.hidden = true;
+                showUpdateBanner('アップデートの確認またはダウンロードに失敗しました。', info.message || '');
                 break;
             default:
-                updateLabel.textContent = '自動更新：起動後に確認します';
+                if (updateLabel) updateLabel.textContent = '自動更新：起動後に確認します';
             }
         };
+
         if (window.stsen && typeof window.stsen.onUpdateStatus === 'function') {
             window.stsen.onUpdateStatus(renderUpdateStatus);
         }
@@ -3192,8 +3246,40 @@ var NicoLiveHelper = {
                 return;
             }
             renderUpdateStatus({ status: 'checking' });
-            const result = await window.stsen.checkForUpdates();
-            if (result && result.status && result.status !== 'checking') renderUpdateStatus(result);
+            try {
+                const result = await window.stsen.checkForUpdates();
+                if (result && result.status && result.status !== 'checking') renderUpdateStatus(result);
+            } catch (error) {
+                renderUpdateStatus({ status: 'error', message: error && error.message ? error.message : String(error) });
+            }
+        } );
+
+        $( '#app-update-dismiss' ).on( 'click', ( ev ) => {
+            ev.preventDefault();
+            updateBannerDismissed = true;
+            if (updateBanner) updateBanner.hidden = true;
+        } );
+
+        $( '#app-update-install' ).on( 'click', async ( ev ) => {
+            ev.preventDefault();
+            if (!window.stsen || typeof window.stsen.installUpdate !== 'function') {
+                renderUpdateStatus({ status: 'error', message: '更新適用用APIが利用できません。' });
+                return;
+            }
+            if (installButton) {
+                installButton.disabled = true;
+                installButton.textContent = '更新を適用しています…';
+            }
+            try {
+                const result = await window.stsen.installUpdate();
+                if (result && result.success === false) {
+                    renderUpdateStatus({ status: 'error', message: result.message || '更新ファイルが見つかりません。' });
+                    if (installButton) installButton.disabled = false;
+                }
+            } catch (error) {
+                renderUpdateStatus({ status: 'error', message: error && error.message ? error.message : String(error) });
+                if (installButton) installButton.disabled = false;
+            }
         } );
         $( '#btn-play-next' ).on( 'click', ( ev ) => {
             if (window.RemoteClient && window.RemoteClient.isConnected()) {
