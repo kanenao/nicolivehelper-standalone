@@ -70,12 +70,77 @@ fieldset {
 
 header {
     background-color: #ededef;
-
     cursor: default;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* コピー／貼り付けが必要な入力欄と本文は常にテキスト選択可能にする。 */
+body, input, textarea, select, [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 更新通知は新しいバージョンがある場合だけヘッダー直下に表示する。 */
+.app-update-banner {
+    display: block;
+    margin: 0;
+    padding: 8px 12px;
+    background: #eaf4ff;
+    border-bottom: 1px solid #9ac8f4;
+    color: #123b61;
+}
+.app-update-banner[hidden],
+.app-update-progress-wrap[hidden],
+#app-update-install[hidden] {
+    display: none !important;
+}
+.app-update-banner-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+.app-update-banner-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+}
+.app-update-banner-text strong {
+    font-size: 12px;
+    color: #123b61;
+}
+.app-update-banner-text small {
+    font-size: 11px;
+    color: #365b7d;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.app-update-progress-wrap {
+    display: flex;
+    flex: 0 1 190px;
+    align-items: center;
+    gap: 7px;
+    min-width: 100px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.app-update-progress-track {
+    flex: 1;
+    height: 7px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #c9d9e8;
+}
+.app-update-progress-bar {
+    width: 0;
+    height: 100%;
+    background: #1672c4;
+    transition: width .2s ease;
 }
 
 .tab-content {
