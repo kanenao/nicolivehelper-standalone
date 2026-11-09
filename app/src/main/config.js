@@ -27,6 +27,7 @@ var Config = {
     'auto-enquete-enabled': false,
     'auto-enquete-delay': 60,
     'auto-enquete-duration': 30,
+    'auto-enquete-repeat-delay': 15,
     'auto-enquete-result-display-duration': 15,
     'auto-enquete-repeat-tie': true,
     'auto-enquete-repeat-empty': true,
