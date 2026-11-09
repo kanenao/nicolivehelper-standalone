@@ -702,25 +702,27 @@ function createOrFocusMainWindow(lvid = '') {
   mainWindow.webContents.on('did-finish-load', () => {
     console.log(`[STSen] MainWindow did-finish-load: ${mainWindow.webContents.getURL()}`);
     const issueList = rendererStartupIssues.slice();
-    const script = `(() => {
-      if (!window.__nicoliveHelperDiag) {
-        const node = document.createElement('div');
-        node.id = 'nicolive-helper-diagnostic';
-        node.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:2147483647;max-width:55vw;padding:6px 10px;border:1px solid #b45309;border-radius:4px;background:#fff7ed;color:#7c2d12;font:12px/1.4 sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 1px 5px #0004;';
-        document.body.appendChild(node);
-        window.__nicoliveHelperDiag = (message) => { node.textContent = '診断: ' + message; };
-        document.addEventListener('click', (event) => {
-          const target = event.target && event.target.nodeType === 3 ? event.target.parentElement : event.target;
-          const control = target && target.closest ? target.closest('button,a,[role="button"],input[type="button"],input[type="submit"]') : null;
-          if (control) window.__nicoliveHelperDiag('クリック検知: ' + (control.id ? '#' + control.id : (control.textContent || control.value || control.tagName).trim().slice(0, 40)));
-        }, true);
-      }
-      const status = 'Electron側確認 / jQuery=' + typeof window.jQuery + ' / browser=' + typeof window.browser + ' / stsen=' + typeof window.stsen + ' / NicoLiveHelper=' + typeof window.NicoLiveHelper;
-      window.__nicoliveHelperDiag(${JSON.stringify(issueList.length ? '起動エラー: ' + issueList.join(' | ') : '')} || status);
-    })()`;
-    mainWindow.webContents.executeJavaScript(script).catch((error) => {
-      console.error('[RendererStartup] Diagnostic injection failed:', error);
-    });
+    // 正常起動時は診断パネルを作らない。Electron側で検出した異常がある場合のみ表示する。
+    if (issueList.length > 0) {
+      const message = '起動エラー: ' + issueList.join(' | ');
+      const script = `(() => {
+        if (window.__nicoliveHelperDiag) {
+          window.__nicoliveHelperDiag(${JSON.stringify(message)});
+          return;
+        }
+        let node = document.getElementById('nicolive-helper-diagnostic');
+        if (!node) {
+          node = document.createElement('div');
+          node.id = 'nicolive-helper-diagnostic';
+          node.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:2147483647;max-width:55vw;padding:6px 10px;border:1px solid #b45309;border-radius:4px;background:#fff7ed;color:#7c2d12;font:12px/1.4 sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 1px 5px #0004;';
+          document.body.appendChild(node);
+        }
+        node.textContent = ${JSON.stringify(message)};
+      })()`;
+      mainWindow.webContents.executeJavaScript(script).catch((error) => {
+        console.error('[RendererStartup] Diagnostic injection failed:', error);
+      });
+    }
   });
 
   if (!app.isPackaged && !isHeadlessArg) { mainWindow.webContents.openDevTools({ mode: 'detach' }); }
