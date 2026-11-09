@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data: blob: https: wss: ws:;">
   <script>
-  // jQuery/main.js の読込前に動く独立診断。画面スクリプトが停止してもクリックとエラーを表示する。
+  // jQuery/main.js の読込前に動く独立診断。異常が発生したときだけ表示する。
   (function () {
     function panel() {
       var node = document.getElementById('nicolive-helper-diagnostic');
@@ -22,13 +22,6 @@
       } catch (_) {}
     }
     window.__nicoliveHelperDiag = diag;
-    function runtimeSummary() {
-      return 'jQuery=' + (typeof window.jQuery) +
-        ' / browser=' + (typeof window.browser) +
-        ' / stsen=' + (typeof window.stsen) +
-        ' / Helper=' + (typeof window.NicoLiveHelper) +
-        ' / init=' + (window.__nicoliveHelperInitCompleted ? '完了' : '未完了');
-    }
     window.addEventListener('error', function (event) {
       var target = event && event.target;
       if (target && target !== window && target.tagName) {
@@ -42,15 +35,12 @@
       diag('非同期エラー: ' + (reason && reason.stack ? reason.stack : String(reason)));
     });
     window.addEventListener('load', function () {
-      diag('画面読込完了 / ' + runtimeSummary() + ' / ボタンを押してクリック検知を確認');
+      var missing = [];
+      if (typeof window.jQuery === 'undefined') missing.push('jQuery');
+      if (typeof window.browser === 'undefined') missing.push('browser preload API');
+      if (typeof window.stsen === 'undefined') missing.push('stsen preload API');
+      if (missing.length) diag('必須機能の読み込み失敗: ' + missing.join(', '));
     });
-    document.addEventListener('click', function (event) {
-      var target = event.target && event.target.nodeType === 3 ? event.target.parentElement : event.target;
-      var control = target && target.closest ? target.closest('button,a,[role="button"],input[type="button"],input[type="submit"],#app-version-badge') : null;
-      if (!control || control.id === 'nicolive-helper-diagnostic') return;
-      var label = control.id ? '#' + control.id : (control.textContent || control.value || control.tagName).trim().slice(0, 50);
-      diag('クリック検知: ' + label + ' / ' + runtimeSummary());
-    }, true);
 
     function invokeFallback(id) {
       var api = window.stsen;
@@ -108,10 +98,9 @@
       try {
         var result = invokeFallback(id);
         if (result && typeof result.then === 'function') {
-          result.then(function () { diag('代替操作を実行しました: #' + id); })
-            .catch(function (error) { diag('代替操作の失敗 #' + id + ': ' + (error && error.message ? error.message : String(error))); });
-        } else {
-          diag('代替操作を実行しました: #' + id);
+          result.catch(function (error) {
+            diag('代替操作の失敗 #' + id + ': ' + (error && error.message ? error.message : String(error)));
+          });
         }
       } catch (error) {
         diag('操作できません #' + id + ': ' + (error && error.message ? error.message : String(error)));
