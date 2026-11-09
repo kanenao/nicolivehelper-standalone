@@ -679,7 +679,11 @@ var NicoLiveHelper = {
             const totalVotes = keep + skip;
             const keepRatio = totalVotes > 0 ? keep / totalVotes : 0.5;
             const safetyMargin = Math.max( 5, Math.round( repeatDelay * keepRatio ) );
-            const extension = repeatDelay + pollDuration + resultDuration + safetyMargin;
+            // 動画終了予定には再投票の待機・投票・結果表示時間も必要。
+            // 視聴者向けの延長告知では、アンケート進行時間を除いた動画側の追加余裕だけを知らせる。
+            const videoOnlyExtension = safetyMargin;
+            const surveyFlowExtension = repeatDelay + pollDuration + resultDuration;
+            const extension = surveyFlowExtension + videoOnlyExtension;
 
             // 重要: アンケート終了APIの応答を待つ前に終了予定を延長する。
             // API通信中に元の自動再生タイマーが満了して延長対象を失う問題を防ぐ。
@@ -690,7 +694,7 @@ var NicoLiveHelper = {
             this._auto_enquete_extension_total = (Number(this._auto_enquete_extension_total) || 0) + extension;
             this._auto_enquete_extension_end_at = this.currentVideo.play_end;
             this.setAutoEnqueteExtensionIndicator( extension, this._auto_enquete_extension_total );
-            this.announceAutoEnqueteExtension( extension );
+            this.announceAutoEnqueteExtension( videoOnlyExtension );
             this.scheduleVideoCompletionAnnouncement( state.video_id );
 
             const remaining = Math.max( 1, this.currentVideo.play_end - now );
