@@ -148,7 +148,6 @@ async function LoadOptions(){
     LoadBool( 'auto-enquete-enabled', config, Config['auto-enquete-enabled'] );
     LoadValue( 'auto-enquete-delay', config, Config['auto-enquete-delay'] );
     LoadValue( 'auto-enquete-duration', config, Config['auto-enquete-duration'] );
-    LoadValue( 'auto-enquete-repeat-delay', config, Config['auto-enquete-repeat-delay'] );
     LoadValue( 'auto-enquete-result-display-duration', config, Config['auto-enquete-result-display-duration'] );
     LoadBool( 'auto-enquete-repeat-tie', config, Config['auto-enquete-repeat-tie'] );
     LoadBool( 'auto-enquete-repeat-empty', config, Config['auto-enquete-repeat-empty'] );
@@ -286,7 +285,6 @@ function SaveOptions( ev ){
     SaveBool( 'auto-enquete-enabled', config );
     SaveInt( 'auto-enquete-delay', config );
     SaveInt( 'auto-enquete-duration', config );
-    SaveInt( 'auto-enquete-repeat-delay', config );
     SaveInt( 'auto-enquete-result-display-duration', config );
     SaveBool( 'auto-enquete-repeat-tie', config );
     SaveBool( 'auto-enquete-repeat-empty', config );
