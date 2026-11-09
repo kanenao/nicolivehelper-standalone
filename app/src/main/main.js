@@ -439,14 +439,50 @@ var NicoLiveHelper = {
         this._auto_enquete_result_timer = null;
         this._auto_enquete_state = null;
         if( !Config['auto-enquete-enabled'] || !this.currentVideo || !this.isConnected() || !this.isCaster() ) return;
-        const delay = Math.max( 0, parseInt( Config['auto-enquete-delay'] ) || 0 );
+
+        const totalSeconds = Math.floor( Number(this.currentVideo.length_ms) / 1000 );
+        const delayValue = Number.parseInt( Config['auto-enquete-delay'], 10 );
+        const startDelay = Number.isFinite(delayValue) ? Math.max( 0, delayValue ) : 60;
+        const pollValue = Number.parseInt( Config['auto-enquete-duration'], 10 );
+        const pollDuration = Number.isFinite(pollValue) ? Math.max( 5, pollValue ) : 30;
+        const resultValue = Number.parseInt( Config['auto-enquete-result-display-duration'], 10 );
+        const resultDuration = Number.isFinite(resultValue) ? Math.max( 0, resultValue ) : 15;
+        const requiredBeforeStart = pollDuration + resultDuration + 5;
+        const minimumVideoLength = startDelay + requiredBeforeStart;
         const elapsed = Math.max( 0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()) );
-        const wait = Math.max( 0, delay - elapsed );
+        const remainingVideoSeconds = totalSeconds - elapsed;
+
+        // 動画全体の長さからアンケート実施可否を自動判定する。
+        // 開始待ち + 投票 + 結果表示 + 5秒の余裕が取れない短い動画はアンケートを省略する。
+        if( !Number.isFinite(totalSeconds) || totalSeconds <= 0 ||
+            totalSeconds < minimumVideoLength ||
+            remainingVideoSeconds < requiredBeforeStart ){
+            console.log( '[AutoEnquete] 動画の長さが不足しているため、この動画ではアンケートを省略します', {
+                video_id: currentVideoId,
+                totalSeconds,
+                remainingVideoSeconds,
+                minimumVideoLength,
+                requiredBeforeStart
+            } );
+            return;
+        }
+
+        const wait = Math.max( 0, startDelay - elapsed );
         this._auto_enquete_timer = setTimeout( () => {
             if( !this.currentVideo || this.currentVideo.video_id !== currentVideoId ) return;
+            const remaining = Math.floor(Number(this.currentVideo.length_ms) / 1000) -
+                Math.max(0, GetCurrentTime() - (this.currentVideo.play_begin || GetCurrentTime()));
+            if( remaining < requiredBeforeStart ){
+                console.log( '[AutoEnquete] 開始予定時点で動画残り時間が不足したためアンケートを省略します', {
+                    video_id: currentVideoId,
+                    remainingSeconds: remaining,
+                    requiredSeconds: requiredBeforeStart
+                } );
+                return;
+            }
             this.startAutoEnquete();
         }, wait * 1000 );
-        console.log( `[AutoEnquete] ${wait}秒後にアンケートを開始します` );
+        console.log( `[AutoEnquete] 動画長に基づきアンケートを実施します。全体${totalSeconds}秒・開始まで${wait}秒・投票${pollDuration}秒・結果表示${resultDuration}秒` );
     },
 
     startAutoEnquete: async function(){
@@ -580,13 +616,20 @@ var NicoLiveHelper = {
         const sameVideo = !!(this.currentVideo && state.video_id === this.currentVideo.video_id);
 
         if( repeat && sameVideo ){
-            const repeatDelayRaw = Config['auto-enquete-repeat-delay'];
-            const repeatDelayValue = Number.parseInt( repeatDelayRaw, 10 );
-            const repeatDelay = Number.isFinite( repeatDelayValue )
-                ? Math.min( 3600, Math.max( 0, repeatDelayValue ) )
-                : 15;
-            console.log( '[AutoEnquete] 再投票待機の設定値:', {
-                configuredSeconds: repeatDelayRaw,
+            // 投票結果に応じて再投票待機を自動計算する。
+            // 継続票の割合が高いほど次の確認まで長く待ち、僅差なら短く再確認する。
+            // 同票は10秒、無投票は5秒。継続最多は10〜60秒の範囲。
+            const totalVotesForDelay = keep + skip;
+            const keepRatioForDelay = totalVotesForDelay > 0 ? keep / totalVotesForDelay : 0.5;
+            const repeatDelay = noVotes
+                ? 5
+                : (tie
+                    ? 10
+                    : Math.min( 60, Math.max( 10, Math.round( 10 + (keepRatioForDelay - 0.5) * 100 ) ) ));
+            console.log( '[AutoEnquete] 投票結果に基づく再投票待機を自動計算しました:', {
+                keep,
+                skip,
+                keepRatio: Math.round(keepRatioForDelay * 100),
                 appliedSeconds: repeatDelay
             } );
             const pollDurationValue = parseInt( Config['auto-enquete-duration'] );
