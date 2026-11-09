@@ -1743,6 +1743,10 @@ function isAllowedNicoInAppUrl(rawUrl) {
 
 // 全 WebContents（メイン画面、アプリ内ニコ生ウィンドウ、放送画面 WebView）共通のリンクハンドラ
 app.on('web-contents-created', (event, contents) => {
+  // webview のWebContentsを通信ヘッダー補正の対象外として登録する。
+  if (contents.getType() === 'webview') {
+    inAppNicoContents.add(contents.id);
+  }
   const isEmbeddedNicoContents = () =>
     inAppNicoContents.has(contents.id) || contents.getType() === 'webview';
 
