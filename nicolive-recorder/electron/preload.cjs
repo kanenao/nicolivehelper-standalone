@@ -11,7 +11,7 @@ contextBridge.exposeInMainWorld("nicoAPI", {
   selectVideoSource: (sourceId) => ipcRenderer.invoke("video:select-source", sourceId),
   cancelCaptureSource: () => ipcRenderer.invoke("video:cancel-source"),
   startVideo: (liveId) => ipcRenderer.invoke("video:start", liveId),
-  writeVideoChunk: (chunk) => ipcRenderer.send("video:chunk", chunk),
+  writeVideoChunk: (chunk) => ipcRenderer.invoke("video:chunk", chunk),
   stopVideo: () => ipcRenderer.invoke("video:stop"),
   openDataFolder: () => ipcRenderer.invoke("data:open-folder"),
   exportCsv: () => ipcRenderer.invoke("comments:export-csv"),
