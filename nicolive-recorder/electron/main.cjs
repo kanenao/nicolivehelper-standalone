@@ -280,13 +280,17 @@ ipcMain.handle("video:start", async (_event, value) => {
   return { path: videoFilePath };
 });
 
-ipcMain.on("video:chunk", (_event, arrayBuffer) => {
-  if (!videoWriter || !arrayBuffer) return;
-  try {
-    videoWriter.write(Buffer.from(arrayBuffer));
-  } catch (error) {
-    send("app:error", "録画データを書き込めません: " + error.message);
+ipcMain.handle("video:chunk", async (_event, arrayBuffer) => {
+  if (!videoWriter || !arrayBuffer) {
+    throw new Error("録画ファイルが開かれていません。");
   }
+  await new Promise((resolve, reject) => {
+    videoWriter.write(Buffer.from(arrayBuffer), (error) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+  return { written: true };
 });
 
 ipcMain.handle("video:stop", async () => {
