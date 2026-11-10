@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, session } = require("electron");
+const { app, BrowserWindow, ipcMain, shell, dialog, session, desktopCapturer } = require("electron");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -10,6 +10,7 @@ let commentWriter = null;
 let commentFilePath = "";
 let videoWriter = null;
 let videoFilePath = "";
+let pendingCaptureRequest = null;
 
 function dataRoot() {
   const root = path.join(app.getPath("videos"), "NicoLiveRecorder");
@@ -223,6 +224,48 @@ ipcMain.handle("live:disconnect", async () => {
   return { disconnected: true };
 });
 
+
+ipcMain.handle("video:list-sources", async () => {
+  const sources = await desktopCapturer.getSources({
+    types: ["window", "screen"],
+    thumbnailSize: { width: 240, height: 150 },
+    fetchWindowIcons: true
+  });
+  return sources.map((source) => ({
+    id: source.id,
+    name: source.name,
+    thumbnail: source.thumbnail ? source.thumbnail.toDataURL() : ""
+  }));
+});
+
+ipcMain.handle("video:select-source", async (_event, sourceId) => {
+  if (!pendingCaptureRequest) {
+    throw new Error("録画元の選択要求が終了しています。もう一度録画を開始してください。");
+  }
+  const sources = await desktopCapturer.getSources({
+    types: ["window", "screen"],
+    thumbnailSize: { width: 0, height: 0 }
+  });
+  const selected = sources.find((source) => source.id === sourceId);
+  if (!selected) throw new Error("選択したウィンドウが見つかりません。");
+
+  const pending = pendingCaptureRequest;
+  pendingCaptureRequest = null;
+  const streams = { video: selected };
+  if (pending.audioRequested) streams.audio = "loopback";
+  pending.callback(streams);
+  return { selected: true, name: selected.name };
+});
+
+ipcMain.handle("video:cancel-source", async () => {
+  if (pendingCaptureRequest) {
+    const pending = pendingCaptureRequest;
+    pendingCaptureRequest = null;
+    pending.callback(null);
+  }
+  return { cancelled: true };
+});
+
 ipcMain.handle("video:start", async (_event, value) => {
   if (videoWriter) throw new Error("映像録画はすでに実行中です。");
   const liveId = safeLiveId(value);
@@ -306,6 +349,20 @@ ipcMain.handle("comments:export-csv", async () => {
 });
 
 app.whenReady().then(() => {
+  session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
+    const frameUrl = request.frame && request.frame.url ? request.frame.url : "";
+    if (!mainWindow || !frameUrl.startsWith("file://") || !request.videoRequested) {
+      callback(null);
+      return;
+    }
+    if (pendingCaptureRequest) pendingCaptureRequest.callback(null);
+    pendingCaptureRequest = {
+      callback,
+      audioRequested: Boolean(request.audioRequested)
+    };
+    send("video:choose-source", {});
+  }, { useSystemPicker: false });
+
   makeWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) makeWindow();
