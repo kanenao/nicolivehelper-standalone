@@ -194,6 +194,80 @@ function formatDuration(milliseconds) {
   return hours + ":" + minutes + ":" + seconds;
 }
 
+function openCaptureSourcePicker(sources) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement("div");
+    overlay.className = "capture-overlay";
+    const panel = document.createElement("section");
+    panel.className = "capture-dialog";
+    const heading = document.createElement("div");
+    heading.className = "capture-dialog-heading";
+    heading.innerHTML = "<div><div class='eyebrow'>SELECT CAPTURE SOURCE</div><h2>録画する画面を選択</h2><p>ニコ生を表示しているブラウザーのウィンドウを選んでください。</p></div>";
+    const grid = document.createElement("div");
+    grid.className = "capture-source-grid";
+    const finish = (value) => {
+      overlay.remove();
+      resolve(value);
+    };
+    for (const source of sources) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "capture-source";
+      if (source.thumbnail) {
+        const image = document.createElement("img");
+        image.src = source.thumbnail;
+        image.alt = "";
+        button.appendChild(image);
+      } else {
+        const placeholder = document.createElement("div");
+        placeholder.className = "capture-source-placeholder";
+        placeholder.textContent = "画面";
+        button.appendChild(placeholder);
+      }
+      const name = document.createElement("span");
+      name.textContent = source.name || "名前のないウィンドウ";
+      button.appendChild(name);
+      button.addEventListener("click", () => finish(source));
+      grid.appendChild(button);
+    }
+    const actions = document.createElement("div");
+    actions.className = "capture-dialog-actions";
+    const cancel = document.createElement("button");
+    cancel.type = "button";
+    cancel.className = "button button-outline";
+    cancel.textContent = "キャンセル";
+    cancel.addEventListener("click", () => finish(null));
+    actions.appendChild(cancel);
+    panel.append(heading, grid, actions);
+    overlay.appendChild(panel);
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) finish(null);
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+async function handleCaptureSourceRequest() {
+  try {
+    const sources = await api.listVideoSources();
+    if (!sources.length) {
+      await api.cancelCaptureSource();
+      showToast("録画できる画面・ウィンドウが見つかりません。", true);
+      return;
+    }
+    const source = await openCaptureSourcePicker(sources);
+    if (!source) {
+      await api.cancelCaptureSource();
+      showToast("画面録画をキャンセルしました。");
+      return;
+    }
+    await api.selectVideoSource(source.id);
+  } catch (error) {
+    try { await api.cancelCaptureSource(); } catch (_) {}
+    showToast(error.message || "録画元を選択できませんでした。", true);
+  }
+}
+
 async function startVideoRecording() {
   const liveId = normalizeId(liveInput.value || currentLiveId);
   if (!liveId) {
@@ -205,7 +279,10 @@ async function startVideoRecording() {
     return;
   }
 
+  recordButton.disabled = true;
   try {
+    // Request capture immediately from the button gesture. The main process
+    // asks the user to select one specific window or screen before granting it.
     captureStream = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: 30 },
       audio: true
@@ -266,13 +343,14 @@ async function startVideoRecording() {
     }
     showToast("画面録画を開始しました。");
   } catch (error) {
+    try { await api.cancelCaptureSource(); } catch (_) {}
     if (captureStream) captureStream.getTracks().forEach((track) => track.stop());
     captureStream = null;
     try { await api.stopVideo(); } catch (_) {}
+    recordButton.disabled = false;
     showToast(error.message || "画面録画を開始できませんでした。", true);
   }
 }
-
 function clearRecordClock() {
   if (recordClock) window.clearInterval(recordClock);
   recordClock = null;
@@ -291,6 +369,7 @@ function stopVideoRecording() {
 }
 
 api.onEvent(({ channel, payload }) => {
+  if (channel === "video:choose-source") handleCaptureSourceRequest();
   if (channel === "live:event") renderEvent(payload);
   if (channel === "live:metadata") updateMetadata(payload);
   if (channel === "live:state") {
