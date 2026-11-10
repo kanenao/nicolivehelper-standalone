@@ -17,6 +17,7 @@ let currentLiveId = "";
 let commentCount = 0;
 let eventCount = 0;
 let displayedComments = 0;
+let videoChunkQueue = Promise.resolve();
 
 function showToast(message, isError) {
   const toast = byId("toast");
@@ -296,14 +297,16 @@ async function startVideoRecording() {
     ];
     const mimeType = supportedTypes.find((type) => MediaRecorder.isTypeSupported(type));
     videoRecorder = new MediaRecorder(captureStream, mimeType ? { mimeType } : undefined);
+    videoChunkQueue = Promise.resolve();
 
-    videoRecorder.ondataavailable = async (event) => {
+    videoRecorder.ondataavailable = (event) => {
       if (!event.data || event.data.size === 0) return;
-      try {
-        api.writeVideoChunk(await event.data.arrayBuffer());
-      } catch (error) {
+      const chunk = event.data;
+      videoChunkQueue = videoChunkQueue.then(async () => {
+        await api.writeVideoChunk(await chunk.arrayBuffer());
+      }).catch((error) => {
         showToast("録画データを保存できません: " + error.message, true);
-      }
+      });
     };
 
     videoRecorder.onerror = (event) => {
@@ -314,6 +317,7 @@ async function startVideoRecording() {
 
     videoRecorder.onstop = async () => {
       try {
+        await videoChunkQueue;
         const saved = await api.stopVideo();
         showToast(saved.path ? "映像を保存しました: " + saved.path : "録画を停止しました。");
         byId("video-file").textContent = saved.path ? "映像：" + saved.path : "保存先：未作成";
