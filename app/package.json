@@ -1,7 +1,7 @@
 {
   "name": "nicolivehelper-standalone",
   "productName": "NicoLive Helper Standalone",
-  "version": "999.999.999",
+  "version": "0.1.0-beta.39",
   "description": "NicoLive Helper Standalone Desktop Application",
   "main": "main.js",
   "author": "amano / komatti365",
@@ -15,7 +15,8 @@
     "dist:zip": "electron-builder --win zip"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "ws": "^8.18.0",
+    "electron-updater": "^6.8.12"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -52,7 +53,8 @@
       "createStartMenuShortcut": true,
       "shortcutName": "NicoLive Helper Standalone",
       "artifactName": "NicoLiveHelper-Standalone-v${version}-Setup.${ext}",
-      "license": "installer-license.txt"
+      "license": "installer-license.rtf",
+      "language": "1041"
     },
     "files": [
       "main.js",
@@ -61,16 +63,16 @@
       "src/**/*",
       "node_modules/**/*",
       "package.json",
-      "installer-license.txt"
+      "installer-license.rtf"
     ],
     "publish": {
       "provider": "github",
-      "owner": "komatti365",
+      "owner": "kanenao",
       "repo": "nicolivehelper-standalone"
     }
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/komatti365/nicolivehelper-standalone.git"
+    "url": "https://github.com/kanenao/nicolivehelper-standalone.git"
   }
 }

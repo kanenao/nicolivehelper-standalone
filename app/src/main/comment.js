@@ -29,6 +29,7 @@ var NicoLiveComment = {
     reflectionmap: {},
 
     _namecache: {},
+    activeUserFilter: null,
 
     saveFile: function(){
         let str = "";
@@ -208,6 +209,7 @@ var NicoLiveComment = {
         if( !table ){
             return;
         }
+        let body = table.tBodies[0] || table.createTBody();
 
         this.commentlog.push( comment );
         if (window.RemoteHostBridge && window.RemoteHostBridge.onCommentReceived) {
@@ -215,11 +217,12 @@ var NicoLiveComment = {
         }
 
         // 表示行数に切り詰め
-        if( table.rows.length >= Config['comment-dispay-lines'] ){
-            table.deleteRow( table.rows.length - 1 );
+        const maxLines = Math.max( 1, parseInt(Config['comment-dispay-lines']) || 200 );
+        if( body.rows.length >= maxLines ){
+            body.deleteRow( body.rows.length - 1 );
         }
 
-        let tr = table.insertRow( 0 );
+        let tr = body.insertRow( 0 );
         tr.setAttribute( "tr_comment_by", comment.user_id );
 
         // NGスコアによる透過
@@ -334,6 +337,12 @@ var NicoLiveComment = {
         td = tr.insertCell( tr.cells.length );
         td.textContent = GetDateTimeString( comment.date * 1000 );
 
+        // 現在の検索条件を新着コメントにも適用し、表示件数を更新する。
+        const filter = document.getElementById('comment-filter');
+        const query = filter ? String(filter.value || '').toLocaleLowerCase() : '';
+        tr.hidden = (!!query && !tr.textContent.toLocaleLowerCase().includes(query)) || (!!this.activeUserFilter && String(comment.user_id) !== this.activeUserFilter);
+        this.applyCommentFilter();
+
         // 自動コテハン
         this.autoKotehan( comment );
 
@@ -412,6 +421,19 @@ var NicoLiveComment = {
             this.addCommentReflection( user_id );
             break;
 
+        case 'filter_user':
+            this.activeUserFilter = String(user_id);
+            this.applyCommentFilter();
+            break;
+
+        case 'copy_comment':
+            {
+                const row = $elem.closest('tr')[0];
+                const body = row && row.cells[2] ? row.cells[2].innerText : '';
+                if (body && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(body).catch(console.error);
+            }
+            break;
+
         case 'set_kotehan':
             let defvalue = '';
             try{
@@ -429,6 +451,20 @@ var NicoLiveComment = {
         // console.log( options.$trigger );
     },
 
+    applyCommentFilter: function(){
+        const query = String((document.getElementById('comment-filter') || {}).value || '').toLocaleLowerCase();
+        const rows = document.querySelectorAll('#comment-table tbody tr');
+        let visible = 0;
+        rows.forEach(row => {
+            const userId = row.getAttribute('tr_comment_by');
+            const match = (!query || row.textContent.toLocaleLowerCase().includes(query)) && (!this.activeUserFilter || userId === this.activeUserFilter);
+            row.hidden = !match;
+            if(match) visible++;
+        });
+        const count = document.getElementById('comment-visible-count');
+        if(count) count.textContent = visible + ' 件' + (this.activeUserFilter ? ' (ID:' + this.activeUserFilter + ')' : '');
+    },
+
     initUI: function(){
         $( '#btn-send-comment' ).on( 'click', ( ev ) => {
             this.sendComment();
@@ -438,6 +474,15 @@ var NicoLiveComment = {
             if( ev.keyCode == 13 ){
                 this.sendComment();
             }
+        } );
+
+        $( '#comment-filter' ).on( 'input', () => this.applyCommentFilter() );
+        $( '#comment-user-filter-clear' ).on( 'click', () => { this.activeUserFilter = null; this.applyCommentFilter(); } );
+        $( '#comment-save-log' ).on( 'click', () => this.saveFile() );
+
+        $( '#comment-scroll-bottom' ).on( 'click', () => {
+            const view = document.getElementById('comment-view');
+            if(view) view.scrollTop = 0;
         } );
 
         $.contextMenu( {
@@ -459,6 +504,8 @@ var NicoLiveComment = {
                         "set_kotehan": {
                             name: "コテハン設定"
                         },
+                        "filter_user": { name: "このユーザーのコメントだけ表示" },
+                        "copy_comment": { name: "このコメントをコピー" },
                         "profile": {name: "プロフィールを開く"},
                         "set_reflection": {
                             name: "コメントリフレクション登録"
@@ -478,6 +525,7 @@ var NicoLiveComment = {
         this.namemap = JSON.parse( localStorage.getItem( 'kotehan' ) ) || {};
         this.initUI();
         this.table = document.querySelector( '#comment-table' );
+        if( this.table && !this.table.tBodies.length ) this.table.createTBody();
     },
     destroy: function(){
         let id;

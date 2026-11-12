@@ -1,30 +1,50 @@
-﻿======================================================================
+======================================================================
   NicoLive Helper Standalone 利用規約およびライセンス
 ======================================================================
 
-■ 謝辞
-本ソフトウェアは、amano 様が開発された「New NicoLive Helper」をベースに、
-komatti365 がスタンドアロン化および機能追加を行った改造派生版です。
-素晴らしいオリジナルソフトウェアを公開・維持してくださっている原作者 amano 様、
-ならびにプラットフォームとAPIを提供されているドワンゴ様に深く感謝申し上げます。
+■ 謝辞・開発経緯
+本ソフトウェアは、amano 様が開発・公開された「New NicoLive Helper」を原作とし、
+komatti365 様によってスタンドアロン化および各種機能追加が行われた改造派生版をベースに、
+かなちんが AI 技術を活用してさらなる改造・機能拡張・改善を行っている派生ソフトウェアです。
+
+オリジナルソフトウェアを開発・公開してくださった amano 様、
+スタンドアロン化と機能追加を行ってくださった komatti365 様、
+ならびにプラットフォームおよび API を提供されているドワンゴ様に、心より感謝申し上げます。
+
+本ソフトウェアは、これまでの開発者の成果とライセンスを尊重しながら、
+かなちんが独自に改良・開発を進めているものです。
 
 
 ■ サポート・利用に関する方針
-1. 本ソフトウェアに関するサポート・お問い合わせは、komatti365（またはニコニコ動画のステイン）までお願いいたします。
-   ※ 原作者の amano 様へサポートを依頼することは絶対におやめください。
-2. 本ソフトウェアには AI 生成コードが含まれております。反AIを掲げる方はご利用をお控えください。
-3. 反AIを掲げる方、理不尽な要求を行う方、作者の意図を理解しない方、誹謗中傷を行う方、作者の権利を侵害する行為を行う方、その他不誠実な対応をする方に対するサポートは一切行いません。
-4. 文句がある場合は、ご自身でクリーンに作り直してください。
-5. 悪質な行為に対しては、警察や関係当局へ通報いたします。
-6. 個人開発の無償ソフトウェアのため、動作保証やサポートの継続は保証されません。予めご了承ください。
+1. 本ソフトウェアに関するサポート・お問い合わせは、かなちんまでお願いいたします。
+   原作者の amano 様および先行改造版の開発者である komatti365 様への、
+   本ソフトウェアに関するサポート依頼はご遠慮ください。
+2. 本ソフトウェアには、開発・改良の過程で AI 技術を活用して生成・編集されたコードが含まれています。
+   AI 技術を活用した開発方針にご理解いただける方のみご利用ください。
+3. 他者への誹謗中傷、嫌がらせ、不当な要求、著作権・その他の権利を侵害する行為など、
+   開発者や関係者に迷惑を及ぼす行為はお控えください。
+   これらの行為が確認された場合、サポートをお断りすることがあります。
+4. 本ソフトウェアは個人による開発・改良を行っているものであり、
+   すべてのご要望への対応をお約束するものではありません。
+5. 悪質な権利侵害行為や違法行為が確認された場合には、
+   必要に応じて警察その他の関係機関へ相談・通報することがあります。
+6. 本ソフトウェアは無償で提供される個人開発ソフトウェアです。
+   すべての環境での動作保証、継続的な更新およびサポートを保証するものではありません。
+   あらかじめご了承ください。
 
 
-■ ソフトウェアライセンス (MIT License)
-本ソフトウェア本体は MIT License のもとで配布されます。
+■ ソフトウェアライセンス（MIT License）
+本ソフトウェアは MIT License に基づいて配布されます。
+
+利用・複製・変更・再配布等については、以下の MIT License の条件に従ってください。
+
+本ソフトウェアに含まれる原作および先行改造部分の著作権表示・ライセンス表示は、
+再配布時にも保持してください。
 
 ----------------------------------------------------------------------
 Copyright (c) 2017-2024 amano <amano@miku39.jp>
 Copyright (c) 2026 komatti365 <nh_support@ena-vocalp.com>
+Copyright (c) 2026 かなちん
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,8 +53,8 @@ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
 furnished to do so, subject to the following conditions:
 
-The above copyright notice and this permission notice shall be included in
-all copies or substantial portions of the Software.
+The above copyright notice and this permission notice shall be included
+in all copies or substantial portions of the Software.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,

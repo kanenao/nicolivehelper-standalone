@@ -2,6 +2,8 @@ name: Build & Release
 
 on:
   push:
+    branches:
+      - 'feature/auto-enquete-skip'
     tags:
       - 'v*'
   workflow_dispatch:
@@ -21,6 +23,10 @@ on:
 
 permissions:
   contents: write
+
+concurrency:
+  group: nicolivehelper-build-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -43,9 +49,34 @@ jobs:
           cache: 'npm'
           cache-dependency-path: 'app/package-lock.json'
 
+      - name: Regenerate dependency lockfile
+        working-directory: app
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit synchronized lockfile
+        if: github.ref == 'refs/heads/feature/auto-enquete-skip'
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/package-lock.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore: sync package-lock for app dependencies"
+            git push origin "HEAD:${GITHUB_REF_NAME}"
+          fi
+
       - name: Install dependencies
         working-directory: app
         run: npm ci
+
+      - name: Validate JavaScript syntax
+        working-directory: app
+        shell: bash
+        run: |
+          node --check main.js
+          node --check preload.js
+          node --check src/main/main.js
+          node --check src/options/options.js
 
       - name: Determine Release Version
         id: release_info
@@ -85,19 +116,23 @@ jobs:
             app/dist/*.exe
             app/dist/*.zip
             app/dist/*.blockmap
+            app/dist/*.yml
           if-no-files-found: error
 
       - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch'
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.ref == 'refs/heads/feature/auto-enquete-skip'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.release_info.outputs.tag }}
+          target_commitish: ${{ github.sha }}
           name: ${{ steps.release_info.outputs.tag }}
           draft: ${{ inputs.is_draft || false }}
-          prerelease: ${{ inputs.is_prerelease || false }}
+          prerelease: ${{ inputs.is_prerelease || contains(steps.release_info.outputs.tag, '-') }}
           generate_release_notes: true
           files: |
             app/dist/*.exe
             app/dist/*.zip
+            app/dist/*.blockmap
+            app/dist/*.yml
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

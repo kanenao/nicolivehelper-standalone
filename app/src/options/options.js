@@ -145,6 +145,13 @@ async function LoadOptions(){
     /* 進行 */
     LoadValue( 'play-default-volume', config, Config['play-default-volume'] );
     LoadValue( 'autoplay-interval', config, Config['autoplay-interval'] );
+    LoadBool( 'auto-enquete-enabled', config, Config['auto-enquete-enabled'] );
+    LoadValue( 'auto-enquete-delay', config, Config['auto-enquete-delay'] );
+    LoadValue( 'auto-enquete-duration', config, Config['auto-enquete-duration'] );
+    LoadValue( 'auto-enquete-result-display-duration', config, Config['auto-enquete-result-display-duration'] );
+    LoadBool( 'auto-enquete-repeat-tie', config, Config['auto-enquete-repeat-tie'] );
+    LoadBool( 'auto-enquete-repeat-empty', config, Config['auto-enquete-repeat-empty'] );
+    LoadBool( 'auto-enquete-auto-skip', config, Config['auto-enquete-auto-skip'] );
     LoadBool( 'play-in-time', config, Config['play-in-time'] );
     LoadBool( 'auto-extend', config, Config['auto-extend'] );
     LoadBool( 'auto-start', config, Config['auto-start'] );
@@ -275,6 +282,13 @@ function SaveOptions( ev ){
     /* 進行 */
     SaveInt( 'play-default-volume', config );
     SaveInt( 'autoplay-interval', config );
+    SaveBool( 'auto-enquete-enabled', config );
+    SaveInt( 'auto-enquete-delay', config );
+    SaveInt( 'auto-enquete-duration', config );
+    SaveInt( 'auto-enquete-result-display-duration', config );
+    SaveBool( 'auto-enquete-repeat-tie', config );
+    SaveBool( 'auto-enquete-repeat-empty', config );
+    SaveBool( 'auto-enquete-auto-skip', config );
     SaveBool( 'play-in-time', config );
     SaveBool( 'auto-extend', config );
     SaveBool( 'auto-start', config );

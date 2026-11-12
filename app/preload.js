@@ -7,6 +7,17 @@ try {
   console.warn('[Preload] Failed to get app version synchronously:', e);
 }
 
+const updateStatusListeners = new Set();
+ipcRenderer.on('app-update-status', (event, status) => {
+  for (const listener of updateStatusListeners) {
+    try {
+      listener(status);
+    } catch (err) {
+      console.error('[Preload] Update status listener error:', err);
+    }
+  }
+});
+
 const storageChangeListeners = new Set();
 ipcRenderer.on('storage-changed', (event, changes) => {
   for (const listener of storageChangeListeners) {
@@ -185,6 +196,12 @@ ipcRenderer.on('remote-host-execute-action', (event, data) => {
 });
 
 const stsenApi = {
+  checkForUpdates: () => ipcRenderer.invoke('check-for-app-updates'),
+  installUpdate: () => ipcRenderer.invoke('install-app-update'),
+  onUpdateStatus: (callback) => {
+    if (typeof callback === 'function') updateStatusListeners.add(callback);
+  },
+  openNicoLiveCreate: (reuseId) => ipcRenderer.invoke('open-nicolive-create', reuseId || ''),
   openLoginWindow: () => ipcRenderer.invoke('open-login-window'),
   logout: () => ipcRenderer.invoke('logout'),
   setUserSession: (val) => ipcRenderer.invoke('set-user-session', val),

@@ -3,6 +3,115 @@
 <head>
   <meta charset="UTF-8">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' file: data: blob: https: wss: ws:;">
+  <script>
+  // jQuery/main.js の読込前に動く独立診断。異常が発生したときだけ表示する。
+  (function () {
+    function panel() {
+      var node = document.getElementById('nicolive-helper-diagnostic');
+      if (!node) {
+        node = document.createElement('div');
+        node.id = 'nicolive-helper-diagnostic';
+        node.style.cssText = 'position:fixed;right:6px;bottom:6px;z-index:2147483647;max-width:55vw;padding:6px 10px;border:1px solid #b45309;border-radius:4px;background:#fff7ed;color:#7c2d12;font:12px/1.4 sans-serif;white-space:pre-wrap;overflow-wrap:anywhere;pointer-events:none;box-shadow:0 1px 5px #0004;';
+        (document.body || document.documentElement).appendChild(node);
+      }
+      return node;
+    }
+    function diag(message) {
+      try {
+        panel().textContent = '診断: ' + String(message);
+      } catch (_) {}
+    }
+    window.__nicoliveHelperDiag = diag;
+    window.addEventListener('error', function (event) {
+      var target = event && event.target;
+      if (target && target !== window && target.tagName) {
+        diag('リソース読込失敗: ' + target.tagName + ' ' + (target.src || target.href || 'unknown'));
+      } else {
+        diag('JavaScriptエラー: ' + ((event && event.message) || '詳細不明'));
+      }
+    }, true);
+    window.addEventListener('unhandledrejection', function (event) {
+      var reason = event && event.reason;
+      diag('非同期エラー: ' + (reason && reason.stack ? reason.stack : String(reason)));
+    });
+    window.addEventListener('load', function () {
+      var missing = [];
+      if (typeof window.jQuery === 'undefined') missing.push('jQuery');
+      if (typeof window.browser === 'undefined') missing.push('browser preload API');
+      if (typeof window.stsen === 'undefined') missing.push('stsen preload API');
+      if (missing.length) diag('必須機能の読み込み失敗: ' + missing.join(', '));
+    });
+
+    function invokeFallback(id) {
+      var api = window.stsen;
+      var helper = window.NicoLiveHelper;
+      if (id === 'btn-account-login' || id === 'menu-login' || id === 'btn-account-relogin') {
+        if (!api || !api.openLoginWindow) throw new Error('ログイン用 preload API がありません');
+        return api.openLoginWindow();
+      }
+      if (id === 'open-settings') {
+        if (!window.browser || !window.browser.runtime || !window.browser.runtime.openOptionsPage) throw new Error('設定画面用 browser API がありません');
+        return window.browser.runtime.openOptionsPage();
+      }
+      if (id === 'open-config-folder') {
+        if (!api || !api.openConfigFolder) throw new Error('設定フォルダ用 API がありません');
+        return api.openConfigFolder();
+      }
+      if (id === 'open-about' || id === 'app-version-badge') {
+        if (!api || !api.showAboutDialog) throw new Error('バージョン情報用 API がありません');
+        return api.showAboutDialog();
+      }
+      if (id === 'menu-reset-all-data') {
+        if (!api || !api.resetAllData) throw new Error('初期化用 API がありません');
+        return api.resetAllData();
+      }
+      if (id === 'check-for-updates') {
+        if (!api || !api.checkForUpdates) throw new Error('更新確認用 API がありません');
+        return api.checkForUpdates();
+      }
+      if (id === 'app-update-install') {
+        if (!api || !api.installUpdate) throw new Error('更新適用用 API がありません');
+        return api.installUpdate();
+      }
+      if (id === 'close-window') return window.close();
+      if (id === 'btn-manual-connect') {
+        var input = document.getElementById('input-manual-lvid');
+        var value = input ? input.value.trim() : '';
+        var match = value.match(/lv?\d+/);
+        if (!match) throw new Error('配信IDを入力してください');
+        if (!api || !api.loadLive) throw new Error('配信接続用 API がありません');
+        return api.loadLive(match[0].startsWith('lv') ? match[0] : 'lv' + match[0]);
+      }
+      if (id === 'btn-play-next' && helper && helper.playNext) return helper.playNext();
+      if (id === 'btn-stop-play' && helper && helper.stopVideo) return helper.stopVideo();
+      if (id === 'btn-resend-info' && helper && helper.sendVideoInfo) return helper.sendVideoInfo(helper.currentVideo);
+      if (id === 'broadcast-live-refresh' && helper && helper.refreshBroadcastLivePage) return helper.refreshBroadcastLivePage();
+      return null;
+    }
+    document.addEventListener('click', function (event) {
+      var target = event.target && event.target.nodeType === 3 ? event.target.parentElement : event.target;
+      var control = target && target.closest ? target.closest('button,a,[role="button"],input[type="button"],input[type="submit"],#app-version-badge') : null;
+      if (!control) return;
+      var id = control.id || '';
+      var accountAction = ['btn-account-login','menu-login','btn-account-relogin'].indexOf(id) >= 0;
+      var mainAction = ['open-settings','open-config-folder','open-about','app-version-badge','menu-reset-all-data','check-for-updates','app-update-install','close-window','btn-manual-connect','btn-play-next','btn-stop-play','btn-resend-info','broadcast-live-refresh'].indexOf(id) >= 0;
+      var ready = accountAction ? !!window.__nicoliveHelperAccountUiReady : !!window.__nicoliveHelperMainUiReady;
+      if (ready || (!accountAction && !mainAction)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      try {
+        var result = invokeFallback(id);
+        if (result && typeof result.then === 'function') {
+          result.catch(function (error) {
+            diag('代替操作の失敗 #' + id + ': ' + (error && error.message ? error.message : String(error)));
+          });
+        }
+      } catch (error) {
+        diag('操作できません #' + id + ': ' + (error && error.message ? error.message : String(error)));
+      }
+    }, true);
+  })();
+  </script>
   <title>New NicoLive Helper</title>
 
   <link rel="stylesheet" href="../libs/external/bootstrap/bootstrap.css">
@@ -68,6 +177,9 @@
           <a id="open-settings" class="dropdown-item" href="#">設定</a>
           <a id="open-config-folder" class="dropdown-item" href="#">📁 設定フォルダを開く</a>
           <a id="menu-reset-all-data" class="dropdown-item" href="#" style="color: #dc3545;">⚠️ アプリを完全初期化...</a>
+          <div class="dropdown-divider"></div>
+          <a id="check-for-updates" class="dropdown-item" href="#">更新を確認</a>
+          <span id="app-update-status" class="dropdown-item-text text-muted" style="display:block; max-width:300px; white-space:normal; font-size:11px;">自動更新：起動後に確認します</span>
           <div class="dropdown-divider"></div>
           <a id="open-about" class="dropdown-item" href="#">ℹ️ バージョン情報 (<span class="app-version-text">v99.99.99</span>)</a>
           <div class="dropdown-divider"></div>
@@ -152,6 +264,10 @@
   </fieldset>
 
   <ul class="nav nav-tabs" role="tablist">
+    <li class="nav-item"><a class="nav-link active" data-toggle="tab" href="#tab-live-screen" role="tab">放送画面</a></li>
+    <li class="nav-item">
+      <a class="nav-link" data-toggle="tab" href="#tab-broadcast" role="tab">放送管理</a>
+    </li>
     <li class="nav-item">
       <a class="nav-link" data-toggle="tab" href="#tab-request" role="tab">
         リクエスト
@@ -177,7 +293,83 @@
   </ul>
 </header>
 
+<div id="app-update-banner" class="app-update-banner" hidden role="status" aria-live="polite">
+  <div class="app-update-banner-main">
+    <div class="app-update-banner-text">
+      <strong id="app-update-banner-title">新しいアップデートがあります</strong>
+      <small id="app-update-banner-notes"></small>
+    </div>
+    <div id="app-update-progress-wrap" class="app-update-progress-wrap" hidden>
+      <div class="app-update-progress-track"><div id="app-update-progress-bar" class="app-update-progress-bar"></div></div>
+      <span id="app-update-progress-label">0%</span>
+    </div>
+    <button id="app-update-install" type="button" class="btn btn-sm btn-primary" hidden>再起動して更新</button>
+    <button id="app-update-dismiss" type="button" class="btn btn-sm btn-outline-secondary" title="通知を閉じる" aria-label="通知を閉じる">×</button>
+  </div>
+</div>
+
 <div class="tab-content">
+  <div class="tab-pane active" id="tab-live-screen" role="tabpanel">
+    <div id="broadcast-live-layout">
+      <section id="broadcast-live-video">
+        <div class="broadcast-live-pane-title">放送映像 <button id="broadcast-live-refresh" type="button" class="btn btn-sm btn-outline-light float-right">↻ 更新</button></div>
+        <webview id="broadcast-live-webview" src="about:blank" allowpopups></webview>
+        <div id="broadcast-player-controls">
+          <div id="broadcast-player-title">再生中の動画はありません</div><div class="broadcast-player-timeline"><span id="broadcast-player-current">00:00</span><input id="broadcast-player-seek" type="range" min="0" max="1" value="0" step="1" aria-label="再生位置"><span id="broadcast-player-duration">--:--</span></div>
+          <div id="broadcast-player-actions"><button id="broadcast-player-back" type="button" class="btn btn-sm btn-outline-secondary">↶ 10秒</button><button id="broadcast-player-play" type="button" class="btn btn-sm btn-outline-primary">▶ 再生</button><button id="broadcast-player-pause" type="button" class="btn btn-sm btn-outline-primary">Ⅱ 一時停止</button><button id="broadcast-player-forward" type="button" class="btn btn-sm btn-outline-secondary">10秒 ↷</button><button id="broadcast-player-next" type="button" class="btn btn-sm btn-primary">次の動画へ ⏭</button></div>
+          <div class="broadcast-player-status-row">
+            <strong id="broadcast-player-extension-countdown" hidden></strong>
+            <strong id="broadcast-player-repeat-countdown" hidden></strong>
+            <span id="broadcast-player-state">ニコヘルの再生情報と同期中</span>
+          </div>
+        </div>
+      </section>
+      <section id="broadcast-live-comments">
+        <div class="broadcast-live-pane-title">コメント</div>
+        <div id="broadcast-live-stats"><span>来場者数 <strong id="broadcast-live-viewers">---</strong></span><span>コメント数 <strong id="broadcast-live-comment-count">0</strong></span><span>放送残り <strong id="broadcast-live-remaining">--:--</strong></span></div>
+        <div id="broadcast-live-comments-content"></div>
+      </section>
+    </div>
+  </div>
+  <!-- 放送管理 -->
+  <div class="tab-pane" id="tab-broadcast" role="tabpanel">
+    <div class="container-fluid p-3">
+      <h5>放送管理</h5>
+      <div class="card mb-3">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <strong>現在の番組</strong>
+            <span id="broadcast-status" class="badge badge-secondary">未接続</span>
+          </div>
+          <div class="mb-2"><small class="text-muted">番組タイトル</small><div id="broadcast-title" class="font-weight-bold">---</div></div>
+          <div class="mb-2"><small class="text-muted">番組ID</small><div id="broadcast-id">---</div></div>
+          <div><small class="text-muted">放送者</small><div id="broadcast-caster">---</div></div>
+        </div>
+      </div>
+      <div class="card mb-3">
+        <div class="card-body">
+          <strong>番組操作</strong>
+          <p class="text-muted small mb-2">ニコ生の公式番組作成画面を、NicoLive Helperの専用ウィンドウ内に表示します。ログインCookieはアプリ内で共有されます。</p>
+          <div class="btn-toolbar flex-wrap">
+            <button id="btn-broadcast-create-new" type="button" class="btn btn-primary btn-sm mr-2 mb-2">ニコヘル内で新規枠を作成</button>
+            <button id="btn-broadcast-create-next" type="button" class="btn btn-outline-primary btn-sm mr-2 mb-2">前枠を引き継いで次枠作成</button>
+            <button id="btn-broadcast-open-official" type="button" class="btn btn-outline-secondary btn-sm mb-2">公式放送画面を開く</button>
+          </div>
+        </div>
+      </div>
+      <div class="card mb-3">
+        <div class="card-body">
+          <strong>次枠の自動準備</strong>
+          <div class="mt-2">
+            <label class="mb-0"><input type="checkbox" id="broadcast-auto-create-next"> 番組終了時に次枠作成ページを自動で開く</label>
+          </div>
+          <small class="form-text text-muted">ONにすると、番組終了を検知したときに現在の番組情報を引き継いだ作成ページを開きます。番組の自動作成・自動開始ではありません。</small>
+        </div>
+      </div>
+      <div class="alert alert-info small mb-0">次枠の自動取得と、動画・再生位置の引き継ぎは順次実装します。現段階では番組作成ページの自動表示までです。</div>
+    </div>
+  </div>
+
   <!-- リクエスト -->
   <div class="tab-pane" id="tab-request" role="tabpanel">
     <div id="tab-request-body" class="margin-lr-4">
@@ -373,8 +565,17 @@
         <datalist id="comment-autocomplete">
         </datalist>
       </div>
+      <div id="comment-toolbar" class="comment-toolbar">
+        <input id="comment-filter" type="search" class="form-control form-control-sm" placeholder="コメント・ユーザー名を検索">
+        <span id="comment-visible-count">0 件</span>
+        <button id="comment-user-filter-clear" class="btn btn-sm btn-outline-secondary" type="button" title="ユーザー絞り込み解除">全員</button>
+        <button id="comment-save-log" class="btn btn-sm btn-outline-secondary" type="button">ログ保存</button>
+        <button id="comment-scroll-bottom" class="btn btn-sm btn-outline-secondary" type="button">最新へ</button>
+      </div>
       <div id="comment-view" class="flex1">
         <table id="comment-table">
+          <thead><tr><th class="comment-col-no">番号</th><th class="comment-col-user">ユーザー</th><th>コメント</th><th class="comment-col-time">時刻</th></tr></thead>
+          <tbody></tbody>
         </table>
       </div>
     </div>
@@ -482,6 +683,8 @@
   <div style="flex:1;"></div>
   <span id="status-autoplay" class="badge badge-success">自動再生</span>
   <span id="status-allow-request" class="badge badge-info ml-2">リクエスト受付中</span>
+  <span id="status-enquete" class="badge badge-warning ml-2" style="display:none;" title="自動アンケート実施中">📊 アンケート中</span>
+  <span id="status-enquete-extension" class="badge badge-info ml-2" style="display:none;" title="自動アンケートによる再生延長時間">⏱ 延長 +0秒</span>
   <div class="mr-1 ml-2">
     来 <span id="number-of-listeners">0</span>
   </div>

@@ -70,12 +70,77 @@ fieldset {
 
 header {
     background-color: #ededef;
-
     cursor: default;
-    -webkit-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
+    -webkit-user-select: text;
+    -moz-user-select: text;
+    -ms-user-select: text;
+    user-select: text;
+}
+
+/* コピー／貼り付けが必要な入力欄と本文は常にテキスト選択可能にする。 */
+body, input, textarea, select, [contenteditable="true"] {
+    -webkit-user-select: text !important;
+    user-select: text !important;
+}
+
+/* 更新通知は新しいバージョンがある場合だけヘッダー直下に表示する。 */
+.app-update-banner {
+    display: block;
+    margin: 0;
+    padding: 8px 12px;
+    background: #eaf4ff;
+    border-bottom: 1px solid #9ac8f4;
+    color: #123b61;
+}
+.app-update-banner[hidden],
+.app-update-progress-wrap[hidden],
+#app-update-install[hidden] {
+    display: none !important;
+}
+.app-update-banner-main {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+.app-update-banner-text {
+    display: flex;
+    flex: 1 1 auto;
+    flex-direction: column;
+    min-width: 0;
+    gap: 2px;
+}
+.app-update-banner-text strong {
+    font-size: 12px;
+    color: #123b61;
+}
+.app-update-banner-text small {
+    font-size: 11px;
+    color: #365b7d;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.app-update-progress-wrap {
+    display: flex;
+    flex: 0 1 190px;
+    align-items: center;
+    gap: 7px;
+    min-width: 100px;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+.app-update-progress-track {
+    flex: 1;
+    height: 7px;
+    overflow: hidden;
+    border-radius: 6px;
+    background: #c9d9e8;
+}
+.app-update-progress-bar {
+    width: 0;
+    height: 100%;
+    background: #1672c4;
+    transition: width .2s ease;
 }
 
 .tab-content {
@@ -223,6 +288,27 @@ footer {
 #comment-view {
     margin-top: 2px;
 }
+
+/* NCVを参考にした一覧型コメントビュー */
+#comment-toolbar { display:flex; align-items:center; gap:6px; padding:5px 0; }
+#comment-toolbar input { flex:1; min-width:80px; }
+#comment-visible-count { white-space:nowrap; color:#777; font-size:11px; }
+#comment-view { overflow:auto; border:1px solid #c9cdd2; background:#fff; }
+#comment-table { width:100%; border-collapse:collapse; table-layout:fixed; font-size:12px; }
+#comment-table thead { position:sticky; top:0; z-index:2; background:#e9edf2; color:#303840; }
+#comment-table th { padding:5px 6px; border-bottom:1px solid #b9c1ca; text-align:left; font-weight:600; }
+#comment-table td { padding:4px 6px; border-bottom:1px solid #e5e8eb; vertical-align:top; overflow-wrap:anywhere; }
+#comment-table tbody tr:nth-child(even) { filter:brightness(.985); }
+#comment-table tbody tr:hover { outline:1px solid #80b9e8; outline-offset:-1px; }
+#comment-table .comment-col-no { width:58px; }
+#comment-table .comment-col-user { width:112px; }
+#comment-table .comment-col-time { width:78px; }
+#comment-table td:last-child { color:#687482; white-space:nowrap; font-size:11px; }
+#comment-table .comment_username { width:100%; max-width:100%; font-weight:600; }
+#comment-table tr.color_caster td { font-weight:600; }
+#broadcast-live-comments-content #comment-toolbar { padding:4px 6px; background:#f1f3f5; border-bottom:1px solid #d4d9df; }
+#broadcast-live-comments-content #comment-view { border:0; }
+
 
 #comment-command {
     max-width: 7em;
@@ -418,3 +504,32 @@ tr.white {
 tr.color_caster {
     background-color: #ffeeee;
 }
+
+
+/* 自動アンケート実施中インジケータ */
+#status-enquete {
+    font-size: 8pt;
+    font-weight: bold;
+}
+
+
+/*----- 配信たん風・放送画面 -----*/
+#tab-live-screen { height: calc(100vh - 190px); min-height: 360px; overflow: hidden; }
+#broadcast-live-layout { display: flex; width: 100%; height: 100%; min-height: 0; gap: 6px; padding: 6px; box-sizing: border-box; }
+#broadcast-live-video { flex: 0 0 48%; min-width: 280px; display: flex; flex-direction: column; background: #252525; border: 1px solid #555; }
+#broadcast-live-webview { display: flex; flex: 1; width: 100%; min-height: 0; border: 0; background: #111; }
+#broadcast-live-comments { flex: 1 1 52%; min-width: 260px; min-height: 0; display: flex; flex-direction: column; border: 1px solid #555; background: #fff; }
+.broadcast-live-pane-title { flex: 0 0 auto; padding: 5px 8px; background: #3b3b3b; color: #fff; font-weight: bold; }
+#broadcast-live-comments-content { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
+#broadcast-live-comments-content #tab-comment-body { display: flex; flex: 1; flex-direction: column; min-height: 0; margin: 0; }
+#broadcast-live-comments-content #comment-view { flex: 1; min-height: 0; overflow: auto; }
+#broadcast-live-comments-content #comment-table { width: 100%; }
+@media (max-width: 760px) { #broadcast-live-layout { flex-direction: column; } #broadcast-live-video { flex: 1 1 50%; min-height: 220px; } #broadcast-live-comments { flex: 1 1 50%; } }
+
+#broadcast-player-controls{flex:0 0 auto;padding:7px 9px;background:#292929;color:#f5f5f5;border-top:1px solid #555}.broadcast-player-timeline{display:flex;align-items:center;gap:9px;font-variant-numeric:tabular-nums;font-size:12px}#broadcast-player-seek{flex:1;min-width:40px;accent-color:#19a7d8;cursor:default}.broadcast-player-status-row{display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-top:5px;min-height:18px;font-size:11px}#broadcast-player-extension-countdown{color:#ffd66b;font-weight:700;font-variant-numeric:tabular-nums}#broadcast-player-repeat-countdown{color:#9fe3ff;font-weight:700;font-variant-numeric:tabular-nums}#broadcast-player-state{margin-left:auto;color:#aee6ff;font-size:11px}
+
+#broadcast-live-stats{display:flex;flex-wrap:wrap;gap:14px;padding:7px 9px;background:#303030;color:#eee;border-bottom:1px solid #555;font-size:12px}#broadcast-live-stats strong{color:#69d8ff;font-variant-numeric:tabular-nums;margin-left:4px}#broadcast-live-refresh{float:right;margin-top:-3px;padding:1px 8px;font-size:11px}#broadcast-player-title{font-size:12px;color:#bfeaff;padding:2px 0}
+
+#broadcast-player-actions{display:flex;gap:6px;justify-content:center;flex-wrap:wrap;margin:6px 0}#broadcast-player-actions .btn{min-width:76px}#broadcast-player-seek{cursor:pointer}#broadcast-player-seek:disabled{cursor:not-allowed;opacity:.5}
+
+#broadcast-player-actions #broadcast-player-next{min-width:104px;font-weight:600}
